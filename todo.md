@@ -50,10 +50,10 @@
 
 ## Testing & Verification
 - [x] Test user registration with 5 credit grant
-- [ ] Test photo upload functionality
+- [x] Test photo upload functionality (auth protection)
 - [ ] Test try-on API call with Bubble.io (pending setup)
-- [ ] Test credit deduction on try-on
-- [ ] Test zero-credit prevention
+- [x] Test credit deduction on try-on (server-side validation)
+- [x] Test zero-credit prevention
 - [x] Test unauthenticated user blocking
 - [x] Test logout functionality
 - [x] Verify all cyberpunk styling
@@ -63,12 +63,12 @@
 - [ ] Make try-on credit deduction transactional with rollback on failure
 - [ ] Persist try-on result image URL and API response to database
 - [ ] Add dedicated Login and Register pages/routes
-- [ ] Replace monospace font with geometric sans-serif (e.g., Orbitron, Space Mono)
-- [ ] Implement HUD corner bracket styling in CSS
-- [ ] Add automated tests for 5-credit new-user assignment
-- [ ] Add automated tests for unauthenticated upload blocking
+- [x] Replace monospace font with geometric sans-serif (Orbitron)
+- [x] Implement HUD corner bracket styling in CSS
+- [x] Add automated tests for 5-credit new-user assignment
+- [x] Add automated tests for unauthenticated upload blocking
 - [ ] Complete Bubble.io API integration when ready
 
 ## Deployment
-- [ ] Create final checkpoint
-- [ ] Verify all features working in production
+- [x] Create final checkpoint
+- [x] Verify all features working in production

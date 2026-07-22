@@ -1,3 +1,4 @@
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap');
 @import "tailwindcss";
 @import "tw-animate-css";
 
@@ -178,7 +179,8 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground font-mono;
+    @apply bg-background text-foreground;
+    font-family: 'Orbitron', sans-serif;
   }
   button:not(:disabled),
   [role="button"]:not([aria-disabled="true"]),
@@ -194,6 +196,51 @@
 }
 
 @layer components {
+  /* HUD corner brackets */
+  .hud-corner-tl::before {
+    content: '';
+    position: absolute;
+    top: -8px;
+    left: -8px;
+    width: 20px;
+    height: 20px;
+    border-top: 2px solid oklch(0.9 0.3 291);
+    border-left: 2px solid oklch(0.9 0.3 291);
+  }
+
+  .hud-corner-tr::before {
+    content: '';
+    position: absolute;
+    top: -8px;
+    right: -8px;
+    width: 20px;
+    height: 20px;
+    border-top: 2px solid oklch(0.9 0.3 291);
+    border-right: 2px solid oklch(0.9 0.3 291);
+  }
+
+  .hud-corner-bl::after {
+    content: '';
+    position: absolute;
+    bottom: -8px;
+    left: -8px;
+    width: 20px;
+    height: 20px;
+    border-bottom: 2px solid oklch(0.9 0.3 291);
+    border-left: 2px solid oklch(0.9 0.3 291);
+  }
+
+  .hud-corner-br::after {
+    content: '';
+    position: absolute;
+    bottom: -8px;
+    right: -8px;
+    width: 20px;
+    height: 20px;
+    border-bottom: 2px solid oklch(0.9 0.3 291);
+    border-right: 2px solid oklch(0.9 0.3 291);
+  }
+
   .container {
     width: 100%;
     margin-left: auto;
