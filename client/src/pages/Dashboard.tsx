@@ -275,19 +275,19 @@ export default function Dashboard() {
               <div className="border-2 border-dashed border-accent rounded p-8 text-center hover:border-secondary transition">
                 {selectedPhoto ? (
                   <div className="space-y-4">
-                    <div className="w-full h-64 flex items-center justify-center border border-accent/50 rounded overflow-hidden">
-                      {previewFailed ? (
-                        <div role="status" className="px-4 text-sm text-destructive">Preview unavailable. Choose the photo again to refresh it.</div>
+                    <div className="w-[500px] h-[500px] flex items-center justify-center border border-accent/50 rounded overflow-hidden mx-auto">
+                      {selectedPhoto.previewUrl && !previewFailed ? (
+                        <img src={selectedPhoto.previewUrl} alt="Selected upload" className="w-full h-full object-cover" onLoad={() => setPreviewFailed(false)} onError={() => setPreviewFailed(true)} />
                       ) : (
-                        <img src={selectedPhoto.previewUrl} alt="Selected upload" className="max-w-full max-h-full object-contain" onLoad={() => setPreviewFailed(false)} onError={() => setPreviewFailed(true)} />
+                        <div role="status" className="px-4 text-sm text-destructive">Preview unavailable. Choose the photo again to refresh it.</div>
                       )}
                     </div>
                     <p className="text-sm text-muted-foreground">{selectedPhoto.id ? "Photo selected" : "Uploading selected photo..."}</p>
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    <div className="w-full h-64 flex items-center justify-center border border-accent/50 rounded overflow-hidden">
-                      <img src={DEMO_PHOTO_URL} alt="Demo preview" className="max-w-full max-h-full object-contain opacity-70" />
+                    <div className="w-[500px] h-[500px] flex items-center justify-center border border-accent/50 rounded overflow-hidden mx-auto">
+                      <img src={DEMO_PHOTO_URL} alt="Demo preview" className="w-full h-full object-cover opacity-70" />
                     </div>
                     <p className="text-foreground">Upload a photo to enable try-on</p>
                     <p className="text-xs text-muted-foreground">Demo preview only · PNG, JPG, or WebP up to 5MB</p>
@@ -366,94 +366,46 @@ export default function Dashboard() {
                   {isTryingOn && (
                     <span
                       aria-hidden="true"
-                      className="absolute inset-y-0 left-0 bg-background/20 transition-[width] duration-500 ease-out"
+                      className="absolute inset-y-0 left-0 bg-background/20 transition-[width] duration-1000 ease-out"
                       style={{ width: `${tryOnProgress}%` }}
                     />
                   )}
-                  <span className="relative z-10">
-                    {isTryingOn
-                      ? `${getTryOnProgressLabel(tryOnProgress)} • ${tryOnProgress}%`
-                      : "TRY ON NOW"}
+                  <span
+                    className="relative z-10"
+                  >
+                    {isTryingOn ? `${getTryOnProgressLabel(tryOnProgress)}: ${tryOnProgress}% complete` : "TRY ON NOW"}
                   </span>
                 </Button>
-                {isTryingOn && (
-                  <div className="space-y-4 rounded border border-accent/40 bg-background/40 p-4" aria-live="polite">
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-sm font-bold neon-cyan">LIVE TASK LOG</p>
-                      <p className="text-xs text-muted-foreground">{elapsedSeconds}s elapsed</p>
-                    </div>
-                    <ol className="space-y-2 text-sm">
-                      {liveTaskStages.map((stage) => (
-                        <li key={`${stage.key}-${stage.timestamp}`} className="flex items-start gap-2">
-                          <span aria-hidden="true" className={stage.state === "completed" ? "text-secondary" : stage.state === "error" ? "text-destructive" : "text-accent"}>
-                            {stage.state === "completed" ? "✓" : stage.state === "error" ? "!" : "•"}
-                          </span>
-                          <span className={stage.state === "error" ? "text-destructive" : stage.state === "active" ? "text-foreground" : "text-muted-foreground"}>
-                            {stage.label}{stage.detail ? ` — ${stage.detail}` : ""}
-                          </span>
-                        </li>
-                      ))}
-                    </ol>
-                    <p className="text-xs text-muted-foreground">
-                      {tryOnProgress >= 92
-                        ? "The AI provider is still working. This request will remain open until it returns a result or a safe failure."
-                        : "Preparing your edit. The current server-confirmed stage appears above."}
-                    </p>
-                  </div>
-                )}
               </div>
             </Card>
           </div>
         </div>
       </div>
 
-      {/* Result Modal */}
+      {/* Result Dialog */}
       <Dialog open={showResult} onOpenChange={setShowResult}>
-        <DialogContent className="max-w-2xl bg-card border-2 border-accent">
-          <DialogHeader>
+        <DialogContent className="max-w-3xl p-0 border-0 bg-transparent">
+          <DialogHeader className="p-6 pb-0">
             <DialogTitle className="text-2xl font-bold neon-cyan">TRY-ON RESULT</DialogTitle>
           </DialogHeader>
-
-          {resultData && (
-            <div className="space-y-6">
-              <div className="rounded overflow-hidden border-2 border-accent">
-                <img
-                  src={resultData.resultImageUrl}
-                  alt="Try-on result"
-                  className="w-full h-auto"
-                />
+          <div className="p-6">
+            {resultData?.resultImageUrl ? (
+              <div className="space-y-4">
+                <img src={resultData.resultImageUrl} alt="Try-on result" className="w-full h-auto rounded-lg" />
+                <p className="text-sm text-muted-foreground">Shirt applied: {resultData.shirtApplied}</p>
               </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="bg-background/50 p-4 rounded border-2 border-accent/30">
-                  <p className="text-xs text-muted-foreground mb-2">SHIRT APPLIED</p>
-                  <p className="text-lg font-bold neon-pink">{resultData.shirtApplied}</p>
-                </div>
-
-                <div className="bg-background/50 p-4 rounded border-2 border-accent/30">
-                  <p className="text-xs text-muted-foreground mb-2">CREDITS USED</p>
-                  <p className="text-lg font-bold neon-cyan">1</p>
-                </div>
-
-                <div className="bg-background/50 p-4 rounded border-2 border-accent/30">
-                  <p className="text-xs text-muted-foreground mb-2">CREDITS REMAINING</p>
-                  <p className="text-lg font-bold neon-cyan">{resultData.creditsRemaining}</p>
-                </div>
-
-                <div className="bg-background/50 p-4 rounded border-2 border-accent/30">
-                  <p className="text-xs text-muted-foreground mb-2">STATUS</p>
-                  <p className="text-lg font-bold text-green-400">SUCCESS</p>
-                </div>
-              </div>
-
-              <Button
-                onClick={() => setShowResult(false)}
-                className="w-full px-6 py-3 bg-secondary text-background font-bold border-2 border-secondary"
-              >
-                CLOSE
-              </Button>
-            </div>
-          )}
+            ) : (
+              <div className="text-center text-destructive">No result image available.</div>
+            )}
+          </div>
+          <div className="flex justify-end gap-2 p-6 pt-0">
+            <Button onClick={() => setShowResult(false)} className="bg-secondary text-background">CLOSE</Button>
+            <Button onClick={() => {
+              // Implement save to gallery logic here
+              toast.info("Save to gallery feature coming soon!");
+              setShowResult(false);
+            }} className="bg-accent text-background">SAVE TO GALLERY</Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
