@@ -114,7 +114,6 @@ describe("Try-On Flow", () => {
       await expect(
         caller.tryOn.process({
           photoId: 1,
-          photoUrl: "/manus-storage/photos/1/source.jpg",
           shirtStyle: "classic-white",
         }),
       ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
@@ -125,7 +124,6 @@ describe("Try-On Flow", () => {
 
       const result = await caller.tryOn.process({
         photoId: 1,
-        photoUrl: "/manus-storage/photos/1/source.jpg",
         shirtStyle: "neon-pink",
       });
 
@@ -145,7 +143,6 @@ describe("Try-On Flow", () => {
       await expect(
         caller.tryOn.process({
           photoId: 1,
-          photoUrl: "/manus-storage/photos/1/source.jpg",
           shirtStyle: "dark-black",
         }),
       ).rejects.toMatchObject({ code: "FORBIDDEN" });
@@ -159,11 +156,26 @@ describe("Try-On Flow", () => {
       await expect(
         caller.tryOn.process({
           photoId: 1,
-          photoUrl: "/manus-storage/photos/1/source.jpg",
           shirtStyle: "electric-cyan",
         }),
       ).rejects.toThrow(/Failed to generate shirt try-on image/);
       expect(mocks.addCredits).toHaveBeenCalledWith(1, 1);
+    });
+
+    it("rejects an unowned photo before creating history or deducting a credit", async () => {
+      mocks.getUserPhotos.mockResolvedValue([]);
+      const caller = appRouter.createCaller(createAuthContext());
+
+      await expect(
+        caller.tryOn.process({
+          photoId: 999,
+          shirtStyle: "neon-pink",
+        }),
+      ).rejects.toMatchObject({ code: "NOT_FOUND" });
+
+      expect(mocks.saveTryOnHistory).not.toHaveBeenCalled();
+      expect(mocks.deductCredits).not.toHaveBeenCalled();
+      expect(mocks.generateImage).not.toHaveBeenCalled();
     });
   });
 

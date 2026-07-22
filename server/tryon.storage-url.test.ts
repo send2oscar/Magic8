@@ -81,7 +81,6 @@ describe("tryOn.process source image resolution", () => {
 
     const result = await caller.tryOn.process({
       photoId: 17,
-      photoUrl: "/manus-storage/photos/1/source.jpg",
       shirtStyle: "neon-pink",
     });
 

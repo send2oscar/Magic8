@@ -176,19 +176,39 @@ export const appRouter = router({
       .input(
         z.object({
           photoId: z.number(),
-          photoUrl: z.string(),
           shirtStyle: z.string(),
         })
       )
       .mutation(async ({ ctx, input }) => {
         let creditsDeducted = false;
         try {
-          // Check if user has enough credits
+          // Check the balance before resolving the selected record so a user who
+          // cannot afford a try-on receives the correct actionable response.
           const balance = await getUserCredits(ctx.user.id);
           if (balance < 1) {
             throw new TRPCError({
               code: "FORBIDDEN",
               message: "Insufficient credits. You need at least 1 credit to try on a shirt.",
+            });
+          }
+
+          const shirtInfo = SHIRT_STYLES.find(style => style.id === input.shirtStyle);
+          if (!shirtInfo) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "The selected shirt style is not available.",
+            });
+          }
+
+          // Resolve the selected ID against the signed-in user's own photos before
+          // creating history or charging a credit. Browser-provided paths are never
+          // trusted as the source of truth for a photo selection.
+          const userPhotos = await getUserPhotos(ctx.user.id);
+          const selectedPhoto = userPhotos.find(photo => photo.id === input.photoId);
+          if (!selectedPhoto?.photoKey) {
+            throw new TRPCError({
+              code: "NOT_FOUND",
+              message: "The selected photo was not found in your account. Upload a photo and try again.",
             });
           }
 
@@ -220,11 +240,6 @@ export const appRouter = router({
 
           // Generate shirt try-on image using AI image generation
           try {
-            const shirtInfo = SHIRT_STYLES.find(s => s.id === input.shirtStyle);
-            if (!shirtInfo) {
-              throw new Error("Invalid shirt style");
-            }
-
             // Create a detailed prompt for AI image generation
             const prompt = `You are an expert fashion photo editor. Take this photo and realistically edit the person's shirt to be a ${shirtInfo.name} shirt with color ${shirtInfo.color}. 
             
@@ -241,18 +256,8 @@ The new shirt should be ${shirtInfo.name} with a ${shirtInfo.color} color.`;
             console.log("[Shirt Try-On] Processing shirt change for:", shirtInfo.name);
             console.log("[Shirt Try-On] Using AI image generation to create realistic shirt change");
             
-            // Never pass the browser-facing /manus-storage path to a third party.
-            // Resolve the photo selected by the signed-in user to a temporary public
-            // HTTPS URL from object storage instead.
-            const userPhotos = await getUserPhotos(ctx.user.id);
-            const selectedPhoto = userPhotos.find(photo => photo.id === input.photoId);
-            if (!selectedPhoto?.photoKey) {
-              throw new TRPCError({
-                code: "NOT_FOUND",
-                message: "The selected photo was not found in your account.",
-              });
-            }
-            
+            // Use an externally reachable, temporary object-storage URL rather than
+            // the browser-facing /manus-storage path.
             const sourceImageUrl = await storageGetSignedUrl(selectedPhoto.photoKey);
             const sourceUrl = new URL(sourceImageUrl);
             if (sourceUrl.protocol !== "https:" && sourceUrl.protocol !== "http:") {

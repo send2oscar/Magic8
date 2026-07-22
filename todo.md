@@ -106,7 +106,16 @@
 - [x] Create final checkpoint with AI image generation
 - [x] Verify all features working in production
 - [x] Fix photo upload authentication with JWT token in Authorization header
-- [ ] Fix production try-on image generation when uploaded photo URLs are relative `/manus-storage` paths
+- [x] Fix production try-on image generation when uploaded photo URLs are relative `/manus-storage` paths
 - [ ] Verify the complete production Try On Now flow returns an AI-generated result
 - [x] Replace localhost URL construction with a storage-backed public HTTPS image URL for GPT Image editing
 - [x] Add regression coverage for relative uploaded-photo URLs passed to the try-on procedure
+- [x] Show a percentage-based progress indicator on the Try On Now button while image generation is running
+- [x] Add rendered Dashboard coverage for success, timeout, and non-timeout provider-failure resets
+- [ ] Investigate and correct the unexpected two-credit change observed during end-to-end try-on verification
+- [ ] Verify the deployed authenticated dashboard shows the generated result and deducts exactly one credit
+- [x] Store the selected uploaded photo’s database ID in Dashboard instead of falling back to an unrelated ID
+- [x] Prevent the demo photo from being submitted to the protected try-on endpoint as a user-owned upload
+- [x] Add regression coverage for the selected-photo-not-found scenario
+- [x] Verify Try On Now exits finalizing state in the rendered dashboard for both timeout and provider failures
+- [x] Verify timeout and provider-failure messages are clear and both paths return the button to a retryable state

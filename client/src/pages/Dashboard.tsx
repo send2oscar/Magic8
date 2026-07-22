@@ -3,29 +3,50 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { trpc } from "@/lib/trpc";
-import { useState } from "react";
+import { advanceTryOnProgress, getTryOnProgressLabel } from "@/lib/tryOnProgress";
+import React, { useEffect, useRef, useState } from "react";
 import { Zap, Upload, LogOut, Shirt } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/_core/hooks/useAuth";
 
 const DEMO_PHOTO_URL = '/manus-storage/demo_person_31d5a68a.jpg';
 
+type SelectedPhoto = {
+  id: number;
+  url: string;
+};
+
 export default function Dashboard() {
   const { user, logout, isAuthenticated, loading } = useAuth();
   const [, setLocation] = useLocation();
-  const [selectedPhoto, setSelectedPhoto] = useState<string | null>(DEMO_PHOTO_URL);
+  const [selectedPhoto, setSelectedPhoto] = useState<SelectedPhoto | null>(null);
   const [selectedShirt, setSelectedShirt] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isTryingOn, setIsTryingOn] = useState(false);
+  const [tryOnProgress, setTryOnProgress] = useState(0);
   const [showResult, setShowResult] = useState(false);
   const [resultData, setResultData] = useState<any>(null);
+  const tryOnInFlight = useRef(false);
 
   // tRPC queries and mutations
   const creditsQuery = trpc.credits.getBalance.useQuery();
   const photosQuery = trpc.photos.list.useQuery();
   const shirtsQuery = trpc.shirts.list.useQuery();
-  const uploadMutation = trpc.photos.upload.useMutation();
   const tryOnMutation = trpc.tryOn.process.useMutation();
+
+  useEffect(() => {
+    if (!isTryingOn) {
+      setTryOnProgress(0);
+      return;
+    }
+
+    setTryOnProgress(8);
+    const progressTimer = window.setInterval(() => {
+      setTryOnProgress(currentProgress => advanceTryOnProgress(currentProgress));
+    }, 650);
+
+    return () => window.clearInterval(progressTimer);
+  }, [isTryingOn]);
 
   if (loading) {
     return (
@@ -59,7 +80,6 @@ export default function Dashboard() {
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) {
-      setSelectedPhoto(DEMO_PHOTO_URL);
       return;
     }
 
@@ -104,9 +124,14 @@ export default function Dashboard() {
       }
 
       const result = await response.json();
-      setSelectedPhoto(result.photoUrl);
+      const refreshedPhotos = await photosQuery.refetch();
+      const savedPhoto = refreshedPhotos.data?.find(photo => photo.photoKey === result.photoKey);
+      if (!savedPhoto) {
+        throw new Error("Your photo was uploaded, but could not be selected. Please try again.");
+      }
+
+      setSelectedPhoto({ id: savedPhoto.id, url: savedPhoto.photoUrl });
       toast.success("Photo uploaded successfully!");
-      photosQuery.refetch();
     } catch (error: any) {
       toast.error(error?.message || "Failed to upload photo");
       console.error('Upload error:', error);
@@ -117,26 +142,27 @@ export default function Dashboard() {
 
   const handleTryOn = async () => {
     if (!selectedPhoto || !selectedShirt) {
-      toast.error("Please select both a photo and a shirt style");
+      toast.error("Upload a photo and select a shirt style before trying it on.");
       return;
     }
+
+    if (tryOnInFlight.current) return;
 
     if ((creditsQuery.data?.balance || 0) < 1) {
       toast.error("Insufficient credits. You need at least 1 credit to try on a shirt.");
       return;
     }
 
+    tryOnInFlight.current = true;
     setIsTryingOn(true);
     try {
-      const photos = photosQuery.data || [];
-      const photoId = photos.find(p => p.photoUrl === selectedPhoto)?.id || 1;
-
       const result = await tryOnMutation.mutateAsync({
-        photoId,
-        photoUrl: selectedPhoto,
+        photoId: selectedPhoto.id,
         shirtStyle: selectedShirt,
       });
 
+      setTryOnProgress(100);
+      await new Promise(resolve => window.setTimeout(resolve, 180));
       toast.success("Try-on completed!");
       creditsQuery.refetch();
 
@@ -147,6 +173,7 @@ export default function Dashboard() {
       console.error(error);
     } finally {
       setIsTryingOn(false);
+      tryOnInFlight.current = false;
     }
   };
 
@@ -186,14 +213,14 @@ export default function Dashboard() {
               <div className="border-2 border-dashed border-accent rounded p-8 text-center hover:border-secondary transition">
                 {selectedPhoto ? (
                   <div className="space-y-4">
-                    <img src={selectedPhoto} alt="Selected" className="w-full h-64 object-cover rounded" />
+                    <img src={selectedPhoto.url} alt="Selected upload" className="w-full h-64 object-cover rounded" />
                     <p className="text-sm text-muted-foreground">Photo selected</p>
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    <Upload className="w-12 h-12 mx-auto text-secondary" />
-                    <p className="text-foreground">Click to upload your photo</p>
-                    <p className="text-xs text-muted-foreground">PNG, JPG up to 10MB</p>
+                    <img src={DEMO_PHOTO_URL} alt="Demo preview" className="w-full h-64 object-cover rounded opacity-70" />
+                    <p className="text-foreground">Upload a photo to enable try-on</p>
+                    <p className="text-xs text-muted-foreground">Demo preview only · PNG, JPG, or WebP up to 5MB</p>
                   </div>
                 )}
                 <input
@@ -254,10 +281,28 @@ export default function Dashboard() {
                 <Button
                   onClick={handleTryOn}
                   disabled={isTryingOn || !selectedPhoto || !selectedShirt}
-                  className="w-full px-6 py-4 bg-accent text-background font-bold border-2 border-accent text-lg"
+                  aria-busy={isTryingOn}
+                  aria-label={isTryingOn ? `${getTryOnProgressLabel(tryOnProgress)}: ${tryOnProgress}% complete` : "Try on now"}
+                  className="relative w-full overflow-hidden px-6 py-4 bg-accent text-background font-bold border-2 border-accent text-lg"
                 >
-                  {isTryingOn ? "PROCESSING..." : "TRY ON NOW"}
+                  {isTryingOn && (
+                    <span
+                      aria-hidden="true"
+                      className="absolute inset-y-0 left-0 bg-background/20 transition-[width] duration-500 ease-out"
+                      style={{ width: `${tryOnProgress}%` }}
+                    />
+                  )}
+                  <span className="relative z-10">
+                    {isTryingOn
+                      ? `${getTryOnProgressLabel(tryOnProgress)} • ${tryOnProgress}%`
+                      : "TRY ON NOW"}
+                  </span>
                 </Button>
+                {isTryingOn && (
+                  <p className="text-center text-xs text-muted-foreground" aria-live="polite">
+                    Generating your edited image. If the provider cannot finish, the request will fail safely and your credit will be restored.
+                  </p>
+                )}
               </div>
             </Card>
           </div>

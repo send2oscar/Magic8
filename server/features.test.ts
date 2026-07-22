@@ -76,7 +76,6 @@ describe("Credit System", () => {
     try {
       await caller.tryOn.process({
         photoId: 1,
-        photoUrl: "https://example.com/photo.jpg",
         shirtStyle: "classic-white",
       });
       // If we get here, the test should fail
@@ -157,7 +156,6 @@ describe("Upload Protection", () => {
     try {
       await caller.tryOn.process({
         photoId: 1,
-        photoUrl: "https://example.com/photo.jpg",
         shirtStyle: "classic-white",
       });
       // If we get here, the test should fail

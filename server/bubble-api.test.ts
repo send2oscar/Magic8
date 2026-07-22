@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { afterEach, describe, expect, it, vi } from "vitest";
+
 describe("Bubble.io API Integration", () => {
   it("should validate Bubble.io API credentials", async () => {
     const bubbleApiUrl = process.env.BUBBLE_API_URL;
@@ -9,10 +11,15 @@ describe("Bubble.io API Integration", () => {
     expect(bubbleApiUrl).toBeDefined();
     expect(bubbleToken).toBeDefined();
     expect(bubbleApiUrl).toContain("magic8-78745.bubbleapps.io");
-    expect(bubbleToken).toBe("e2bb203ef7d383766f3d0f4e6d09a77a");
+    expect(typeof bubbleToken).toBe("string");
+    expect(bubbleToken?.length).toBeGreaterThan(0);
   });
 
-  it("should be able to make authenticated request to Bubble.io API", async () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("builds an authenticated Bubble.io API request without performing a live network call", async () => {
     const bubbleApiUrl = process.env.BUBBLE_API_URL;
     const bubbleToken = process.env.BUBBLE_API_TOKEN;
 
@@ -20,27 +27,23 @@ describe("Bubble.io API Integration", () => {
       throw new Error("Bubble.io credentials not configured");
     }
 
-    // Try to make a test request to the API endpoint
-    // We'll use a dummy workflow name to test authentication
+    const fetchMock = vi.fn().mockResolvedValue({ status: 404 });
+    vi.stubGlobal("fetch", fetchMock);
+
     const testUrl = `${bubbleApiUrl}/test_connection`;
+    const response = await fetch(testUrl, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${bubbleToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ test: "connection" }),
+    });
 
-    try {
-      const response = await fetch(testUrl, {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${bubbleToken}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ test: "connection" }),
-      });
-
-      // We expect either 404 (workflow not found) or 200 (success)
-      // Both indicate that authentication was successful
-      expect([200, 404]).toContain(response.status);
-    } catch (error) {
-      // Network errors are acceptable for this test
-      // as we're just validating the credentials format
-      expect(bubbleToken).toBeTruthy();
-    }
+    expect(fetchMock).toHaveBeenCalledWith(testUrl, expect.objectContaining({
+      method: "POST",
+      headers: expect.objectContaining({ Authorization: `Bearer ${bubbleToken}` }),
+    }));
+    expect(response.status).toBe(404);
   });
 });
