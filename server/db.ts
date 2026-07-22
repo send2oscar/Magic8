@@ -1,6 +1,6 @@
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users } from "../drizzle/schema";
+import { InsertUser, users, userPhotos, InsertUserPhoto, tryOnHistory, InsertTryOnHistory } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -89,4 +89,145 @@ export async function getUserByOpenId(openId: string) {
   return result.length > 0 ? result[0] : undefined;
 }
 
-// TODO: add feature queries here as your schema grows.
+/**
+ * Get user credits balance
+ */
+export async function getUserCredits(userId: number) {
+  const db = await getDb();
+  if (!db) {
+    console.warn("[Database] Cannot get credits: database not available");
+    return 0;
+  }
+
+  const result = await db.select({ credits: users.credits }).from(users).where(eq(users.id, userId)).limit(1);
+  return result.length > 0 ? result[0].credits : 0;
+}
+
+/**
+ * Deduct credits from user (for try-on feature)
+ */
+export async function deductCredits(userId: number, amount: number = 1): Promise<boolean> {
+  const db = await getDb();
+  if (!db) {
+    console.warn("[Database] Cannot deduct credits: database not available");
+    return false;
+  }
+
+  try {
+    const currentCredits = await getUserCredits(userId);
+    if (currentCredits < amount) {
+      return false; // Not enough credits
+    }
+
+    await db
+      .update(users)
+      .set({ credits: currentCredits - amount })
+      .where(eq(users.id, userId));
+
+    return true;
+  } catch (error) {
+    console.error("[Database] Failed to deduct credits:", error);
+    return false;
+  }
+}
+
+/**
+ * Add credits to user
+ */
+export async function addCredits(userId: number, amount: number): Promise<boolean> {
+  const db = await getDb();
+  if (!db) {
+    console.warn("[Database] Cannot add credits: database not available");
+    return false;
+  }
+
+  try {
+    const currentCredits = await getUserCredits(userId);
+    await db
+      .update(users)
+      .set({ credits: currentCredits + amount })
+      .where(eq(users.id, userId));
+    return true;
+  } catch (error) {
+    console.error("[Database] Failed to add credits:", error);
+    return false;
+  }
+}
+
+/**
+ * Save user photo
+ */
+export async function saveUserPhoto(photo: InsertUserPhoto) {
+  const db = await getDb();
+  if (!db) {
+    console.warn("[Database] Cannot save photo: database not available");
+    return null;
+  }
+
+  try {
+    const result = await db.insert(userPhotos).values(photo);
+    return result;
+  } catch (error) {
+    console.error("[Database] Failed to save photo:", error);
+    return null;
+  }
+}
+
+/**
+ * Get user's photos
+ */
+export async function getUserPhotos(userId: number) {
+  const db = await getDb();
+  if (!db) {
+    console.warn("[Database] Cannot get photos: database not available");
+    return [];
+  }
+
+  try {
+    return await db.select().from(userPhotos).where(eq(userPhotos.userId, userId));
+  } catch (error) {
+    console.error("[Database] Failed to get photos:", error);
+    return [];
+  }
+}
+
+/**
+ * Save try-on history record
+ */
+export async function saveTryOnHistory(record: InsertTryOnHistory) {
+  const db = await getDb();
+  if (!db) {
+    console.warn("[Database] Cannot save try-on history: database not available");
+    return null;
+  }
+
+  try {
+    const result = await db.insert(tryOnHistory).values(record);
+    return result;
+  } catch (error) {
+    console.error("[Database] Failed to save try-on history:", error);
+    return null;
+  }
+}
+
+/**
+ * Get try-on history for user
+ */
+export async function getTryOnHistory(userId: number, limit: number = 10) {
+  const db = await getDb();
+  if (!db) {
+    console.warn("[Database] Cannot get try-on history: database not available");
+    return [];
+  }
+
+  try {
+    return await db
+      .select()
+      .from(tryOnHistory)
+      .where(eq(tryOnHistory.userId, userId))
+      .limit(limit);
+  } catch (error) {
+    console.error("[Database] Failed to get try-on history:", error);
+    return [];
+  }
+}
