@@ -222,12 +222,23 @@ The new shirt should be ${shirtInfo.name} with a ${shirtInfo.color} color.`;
             console.log("[Shirt Try-On] Processing shirt change for:", shirtInfo.name);
             console.log("[Shirt Try-On] Using AI image generation to create realistic shirt change");
             
+            // Convert relative URL to absolute URL if needed
+            let photoUrl = input.photoUrl;
+            if (photoUrl.startsWith('/')) {
+              // Get the current request host from context or use environment variable
+              const protocol = 'https';
+              const host = process.env.VITE_APP_DOMAIN || 'localhost:3000';
+              photoUrl = `${protocol}://${host}${photoUrl}`;
+            }
+            
+            console.log("[Shirt Try-On] Photo URL for generation:", photoUrl);
+            
             // Call the Manus image generation API with the original image for editing
             const result = await generateImage({
               prompt: prompt,
               originalImages: [
                 {
-                  url: input.photoUrl,
+                  url: photoUrl,
                   mimeType: "image/jpeg",
                 }
               ],
