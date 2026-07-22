@@ -10,11 +10,14 @@ const mocks = vi.hoisted(() => ({
   saveTryOnHistory: vi.fn(),
   getTryOnHistory: vi.fn(),
   updateTryOnHistory: vi.fn(),
+  updateTryOnTaskStages: vi.fn(),
+  getActiveTryOnTask: vi.fn(),
   getUserGallery: vi.fn(),
   getAdminUsers: vi.fn(),
   getAdminUserProfile: vi.fn(),
   storagePut: vi.fn(),
   storageGetSignedUrl: vi.fn(),
+  createTryOnSourceUrl: vi.fn(),
   generateImage: vi.fn(),
 }));
 
@@ -27,6 +30,8 @@ vi.mock("./db", () => ({
   saveTryOnHistory: mocks.saveTryOnHistory,
   getTryOnHistory: mocks.getTryOnHistory,
   updateTryOnHistory: mocks.updateTryOnHistory,
+  updateTryOnTaskStages: mocks.updateTryOnTaskStages,
+  getActiveTryOnTask: mocks.getActiveTryOnTask,
   getUserGallery: mocks.getUserGallery,
   getAdminUsers: mocks.getAdminUsers,
   getAdminUserProfile: mocks.getAdminUserProfile,
@@ -39,6 +44,10 @@ vi.mock("./storage", () => ({
 
 vi.mock("./_core/imageGeneration", () => ({
   generateImage: mocks.generateImage,
+}));
+
+vi.mock("./tryOnSource", () => ({
+  createTryOnSourceUrl: mocks.createTryOnSourceUrl,
 }));
 
 import { appRouter } from "./routers";
@@ -69,7 +78,8 @@ function configureSuccessfulTryOn() {
   mocks.getUserCredits.mockResolvedValue(5);
   mocks.deductCredits.mockResolvedValue(true);
   mocks.addCredits.mockResolvedValue(true);
-  mocks.saveTryOnHistory.mockResolvedValue({ id: 1 });
+  mocks.saveTryOnHistory.mockResolvedValue({ insertId: 1 });
+  mocks.updateTryOnTaskStages.mockResolvedValue(true);
   mocks.getUserPhotos.mockResolvedValue([
     {
       id: 1,
@@ -79,12 +89,9 @@ function configureSuccessfulTryOn() {
       uploadedAt: new Date(),
     },
   ]);
-  mocks.storageGetSignedUrl.mockResolvedValue("https://storage.example.test/photos/1/source.jpg?signature=test");
-  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
-    ok: true,
-    arrayBuffer: async () => new Uint8Array([1, 2, 3, 4]).buffer,
-    headers: new Headers({ "content-type": "image/jpeg" }),
-  }));
+  mocks.createTryOnSourceUrl.mockReturnValue(
+    "https://app.example.test/api/try-on-source?key=photos%2F1%2Fsource.jpg&expires=123&signature=safe-token",
+  );
   mocks.generateImage.mockResolvedValue({ url: "/manus-storage/generated/result.png" });
 }
 
@@ -147,6 +154,22 @@ describe("Try-On Flow", () => {
         resultImageUrl: "/manus-storage/generated/result.png",
         shirtApplied: "Neon Pink",
       });
+      expect(mocks.updateTryOnTaskStages).toHaveBeenCalled();
+    });
+
+    it("accepts the tuple-shaped MySQL insert result used by the deployed database", async () => {
+      mocks.saveTryOnHistory.mockResolvedValue([{ insertId: 41 }, []]);
+      const caller = appRouter.createCaller(createAuthContext());
+
+      await expect(caller.tryOn.process({
+        photoId: 1,
+        shirtStyle: "neon-pink",
+      })).resolves.toMatchObject({ success: true, creditsRemaining: 4 });
+
+      expect(mocks.updateTryOnTaskStages).toHaveBeenCalledWith(
+        41,
+        expect.arrayContaining([expect.objectContaining({ key: "task_created" })]),
+      );
     });
 
     it("prevents try-on when there are no credits", async () => {
@@ -189,6 +212,24 @@ describe("Try-On Flow", () => {
       expect(mocks.saveTryOnHistory).not.toHaveBeenCalled();
       expect(mocks.deductCredits).not.toHaveBeenCalled();
       expect(mocks.generateImage).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("tryOn.activeTask", () => {
+    it("returns only the signed-in user's safe active task diagnostics", async () => {
+      mocks.getActiveTryOnTask.mockResolvedValue({
+        id: 41,
+        shirtStyle: "neon-pink",
+        createdAt: new Date("2026-07-22T00:00:00.000Z"),
+        stages: [{ key: "image_generation", label: "AI shirt generation in progress", state: "active", timestamp: 1 }],
+      });
+
+      const caller = appRouter.createCaller(createAuthContext(1));
+      await expect(caller.tryOn.activeTask()).resolves.toMatchObject({
+        id: 41,
+        stages: [{ key: "image_generation" }],
+      });
+      expect(mocks.getActiveTryOnTask).toHaveBeenCalledWith(1);
     });
   });
 

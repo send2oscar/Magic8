@@ -17,6 +17,14 @@ type SelectedPhoto = {
   previewUrl: string;
 };
 
+type LiveTaskStage = {
+  key: string;
+  label: string;
+  state: "active" | "completed" | "error";
+  detail?: string;
+  timestamp: number;
+};
+
 export default function Dashboard() {
   const { user, logout, isAuthenticated, loading } = useAuth();
   const [, setLocation] = useLocation();
@@ -30,26 +38,45 @@ export default function Dashboard() {
   const tryOnInFlight = useRef(false);
   const previewObjectUrl = useRef<string | null>(null);
   const [previewFailed, setPreviewFailed] = useState(false);
+  const [localTaskStages, setLocalTaskStages] = useState<LiveTaskStage[]>([]);
+  const [tryOnStartedAt, setTryOnStartedAt] = useState<number | null>(null);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
   // tRPC queries and mutations
   const creditsQuery = trpc.credits.getBalance.useQuery();
   const photosQuery = trpc.photos.list.useQuery();
   const shirtsQuery = trpc.shirts.list.useQuery();
   const tryOnMutation = trpc.tryOn.process.useMutation();
+  const activeTaskQuery = trpc.tryOn.activeTask.useQuery(undefined, {
+    enabled: isTryingOn,
+    refetchInterval: isTryingOn ? 1_000 : false,
+    refetchOnWindowFocus: false,
+  });
 
   useEffect(() => {
     if (!isTryingOn) {
       setTryOnProgress(0);
+      setTryOnStartedAt(null);
+      setElapsedSeconds(0);
       return;
     }
 
     setTryOnProgress(8);
+    setTryOnStartedAt(Date.now());
     const progressTimer = window.setInterval(() => {
       setTryOnProgress(currentProgress => advanceTryOnProgress(currentProgress));
     }, 650);
 
     return () => window.clearInterval(progressTimer);
   }, [isTryingOn]);
+
+  useEffect(() => {
+    if (!tryOnStartedAt) return;
+    const timer = window.setInterval(() => {
+      setElapsedSeconds(Math.max(0, Math.floor((Date.now() - tryOnStartedAt) / 1_000)));
+    }, 1_000);
+    return () => window.clearInterval(timer);
+  }, [tryOnStartedAt]);
 
   useEffect(() => () => {
     if (previewObjectUrl.current && typeof URL.revokeObjectURL === "function") URL.revokeObjectURL(previewObjectUrl.current);
@@ -174,6 +201,10 @@ export default function Dashboard() {
 
     tryOnInFlight.current = true;
     setIsTryingOn(true);
+    setLocalTaskStages([
+      { key: "request_sent", label: "Try-on request sent", state: "completed", timestamp: Date.now() },
+      { key: "waiting_for_server", label: "Waiting for server task", state: "active", timestamp: Date.now() },
+    ]);
     try {
       const result = await tryOnMutation.mutateAsync({
         photoId: selectedPhoto.id,
@@ -193,8 +224,13 @@ export default function Dashboard() {
     } finally {
       setIsTryingOn(false);
       tryOnInFlight.current = false;
+      setLocalTaskStages([]);
     }
   };
+
+  const liveTaskStages = activeTaskQuery.data?.stages?.length
+    ? activeTaskQuery.data.stages as LiveTaskStage[]
+    : localTaskStages;
 
   return (
     <div className="min-h-screen bg-background">
@@ -325,9 +361,29 @@ export default function Dashboard() {
                   </span>
                 </Button>
                 {isTryingOn && (
-                  <p className="text-center text-xs text-muted-foreground" aria-live="polite">
-                    Generating your edited image. If the provider cannot finish, the request will fail safely and your credit will be restored.
-                  </p>
+                  <div className="space-y-4 rounded border border-accent/40 bg-background/40 p-4" aria-live="polite">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-bold neon-cyan">LIVE TASK LOG</p>
+                      <p className="text-xs text-muted-foreground">{elapsedSeconds}s elapsed</p>
+                    </div>
+                    <ol className="space-y-2 text-sm">
+                      {liveTaskStages.map((stage) => (
+                        <li key={`${stage.key}-${stage.timestamp}`} className="flex items-start gap-2">
+                          <span aria-hidden="true" className={stage.state === "completed" ? "text-secondary" : stage.state === "error" ? "text-destructive" : "text-accent"}>
+                            {stage.state === "completed" ? "✓" : stage.state === "error" ? "!" : "•"}
+                          </span>
+                          <span className={stage.state === "error" ? "text-destructive" : stage.state === "active" ? "text-foreground" : "text-muted-foreground"}>
+                            {stage.label}{stage.detail ? ` — ${stage.detail}` : ""}
+                          </span>
+                        </li>
+                      ))}
+                    </ol>
+                    <p className="text-xs text-muted-foreground">
+                      {tryOnProgress >= 92
+                        ? "The AI provider is still working. This request will remain open until it returns a result or a safe failure."
+                        : "Preparing your edit. The current server-confirmed stage appears above."}
+                    </p>
+                  </div>
                 )}
               </div>
             </Card>

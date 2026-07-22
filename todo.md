@@ -131,3 +131,26 @@
 - [x] Add automated no-timeout, source-buffering, privacy, gallery, and admin-session coverage
 - [x] Run the local type checker and complete automated suite after restoring the enhancements
 - [ ] Manually verify a real user upload preview, a completed gallery entry, and a credentialed admin login in the running preview
+- [x] Diagnose the post-admin-restoration loss of the Dashboard live task log and the Try On progress stall at 92 percent
+- [x] Restore persisted server task stages and active-task polling for the Dashboard live task log
+- [x] Ensure successful and failed Try On requests always resolve terminal progress, return the button to a retryable state, and do not remain at 92 percent
+- [x] Add regression coverage for the live task-log lifecycle and terminal 92-percent completion path
+- [x] Verify the repaired Try On workflow locally before creating a new checkpoint
+- [ ] Manually run an authenticated Try On after the live-log repair and confirm the log remains visible, progress exits 92 percent on terminal success or failure, and the button becomes retryable
+- [x] Fix the `Failed to create try-on record` regression caused by incompatible database insert identifier handling
+- [x] Add regression coverage for both supported history insert-result shapes while preserving live task-stage persistence
+- [ ] Verify an authenticated Try On can create its history record and begin the live task log before the next checkpoint
+- [x] Diagnose the AI generation or secure source-image stage failure that occurs after Try On history creation
+- [x] Repair the failing generation path without exposing provider details or losing the automatic credit-refund safeguard
+- [x] Add regression coverage for the diagnosed generation-stage failure and a successful retry path
+- [ ] Verify an authenticated Try On produces an image and a completed gallery entry before the next checkpoint
+- [ ] Confirm the live provider response category after the high-to-medium retry and verify the retry targets the actual upstream failure
+- [ ] Run an authenticated Try On that successfully creates a generated image and completed gallery entry after the generation-path repair
+- [ ] If the live provider failure persists, adjust the ImageService request contract using the confirmed safe provider status and add exact regression coverage
+- [ ] Capture the safe upstream status and response classification for the persisted post-retry image-service failure
+- [ ] Correct the edit-image request field names or supported model contract based on the confirmed provider response
+- [ ] Verify a real Try On completes successfully after the provider-contract repair without exposing upstream payloads
+- [x] Replace unsupported inline source-image bytes with a five-minute HMAC-signed application relay URL for the image-edit provider
+- [x] Stream the relay image from private storage without exposing its upstream signed URL or raw provider errors
+- [x] Add signed-relay and Try On contract regression coverage; verify TypeScript and all 37 automated tests pass
+- [ ] Run one authenticated production Try On to confirm the provider can fetch the signed application relay and save a completed gallery result

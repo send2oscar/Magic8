@@ -10,11 +10,14 @@ const mocks = vi.hoisted(() => ({
   saveTryOnHistory: vi.fn(),
   getTryOnHistory: vi.fn(),
   updateTryOnHistory: vi.fn(),
+  updateTryOnTaskStages: vi.fn(),
+  getActiveTryOnTask: vi.fn(),
   getUserGallery: vi.fn(),
   getAdminUsers: vi.fn(),
   getAdminUserProfile: vi.fn(),
   storagePut: vi.fn(),
   storageGetSignedUrl: vi.fn(),
+  createTryOnSourceUrl: vi.fn(),
   generateImage: vi.fn(),
 }));
 
@@ -27,6 +30,8 @@ vi.mock("./db", () => ({
   saveTryOnHistory: mocks.saveTryOnHistory,
   getTryOnHistory: mocks.getTryOnHistory,
   updateTryOnHistory: mocks.updateTryOnHistory,
+  updateTryOnTaskStages: mocks.updateTryOnTaskStages,
+  getActiveTryOnTask: mocks.getActiveTryOnTask,
   getUserGallery: mocks.getUserGallery,
   getAdminUsers: mocks.getAdminUsers,
   getAdminUserProfile: mocks.getAdminUserProfile,
@@ -39,6 +44,10 @@ vi.mock("./storage", () => ({
 
 vi.mock("./_core/imageGeneration", () => ({
   generateImage: mocks.generateImage,
+}));
+
+vi.mock("./tryOnSource", () => ({
+  createTryOnSourceUrl: mocks.createTryOnSourceUrl,
 }));
 
 import { appRouter } from "./routers";
@@ -67,15 +76,11 @@ describe("tryOn.process source image resolution", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
-      ok: true,
-      arrayBuffer: async () => new Uint8Array([1, 2, 3, 4]).buffer,
-      headers: new Headers({ "content-type": "image/jpeg" }),
-    }));
     mocks.getUserCredits.mockResolvedValue(10);
     mocks.deductCredits.mockResolvedValue(true);
     mocks.addCredits.mockResolvedValue(true);
-    mocks.saveTryOnHistory.mockResolvedValue({ id: 1 });
+    mocks.saveTryOnHistory.mockResolvedValue({ insertId: 1 });
+    mocks.updateTryOnTaskStages.mockResolvedValue(true);
     mocks.getUserPhotos.mockResolvedValue([
       {
         id: 17,
@@ -85,11 +90,11 @@ describe("tryOn.process source image resolution", () => {
         uploadedAt: new Date(),
       },
     ]);
-    mocks.storageGetSignedUrl.mockResolvedValue(signedStorageUrl);
+    mocks.createTryOnSourceUrl.mockReturnValue("https://app.example.test/api/try-on-source?key=photos%2F1%2Fsource.jpg&expires=123&signature=safe-token");
     mocks.generateImage.mockResolvedValue({ url: "/manus-storage/generated/result.png" });
   });
 
-  it("reads the signed source privately and sends buffered image bytes rather than the URL to the provider", async () => {
+  it("sends the provider a short-lived application relay URL rather than a storage signed URL or inline bytes", async () => {
     const caller = appRouter.createCaller(createAuthContext());
 
     const result = await caller.tryOn.process({
@@ -97,18 +102,18 @@ describe("tryOn.process source image resolution", () => {
       shirtStyle: "neon-pink",
     });
 
-    expect(mocks.storageGetSignedUrl).toHaveBeenCalledWith(photoKey);
+    expect(mocks.createTryOnSourceUrl).toHaveBeenCalledWith(expect.any(Object), photoKey);
     expect(mocks.generateImage).toHaveBeenCalledWith(
       expect.objectContaining({
         originalImages: [
           expect.objectContaining({
-            b64Json: Buffer.from([1, 2, 3, 4]).toString("base64"),
+            url: "https://app.example.test/api/try-on-source?key=photos%2F1%2Fsource.jpg&expires=123&signature=safe-token",
             mimeType: "image/jpeg",
           }),
         ],
       }),
     );
-    expect(mocks.generateImage.mock.calls[0]?.[0].originalImages?.[0]).not.toHaveProperty("url");
+    expect(mocks.generateImage.mock.calls[0]?.[0].originalImages?.[0]).not.toHaveProperty("b64Json");
     expect(result).toMatchObject({
       success: true,
       resultImageUrl: "/manus-storage/generated/result.png",

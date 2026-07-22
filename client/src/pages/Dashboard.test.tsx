@@ -1,4 +1,4 @@
-/* @vitest-environment jsdom */
+// @vitest-environment jsdom
 import React from "react";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -8,6 +8,8 @@ const mocks = vi.hoisted(() => ({
   mutateAsync: vi.fn(),
   refetchCredits: vi.fn(),
   refetchPhotos: vi.fn(),
+  refetchActiveTask: vi.fn(),
+  activeTaskData: null as unknown,
   toastError: vi.fn(),
   toastSuccess: vi.fn(),
 }));
@@ -15,9 +17,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/lib/trpc", () => ({
   trpc: {
     credits: {
-      getBalance: {
-        useQuery: () => ({ data: { balance: 5 }, refetch: mocks.refetchCredits }),
-      },
+      getBalance: { useQuery: () => ({ data: { balance: 5 }, refetch: mocks.refetchCredits }) },
     },
     photos: {
       list: {
@@ -28,14 +28,11 @@ vi.mock("@/lib/trpc", () => ({
       },
     },
     shirts: {
-      list: {
-        useQuery: () => ({ data: [{ id: "neon-pink", name: "Neon Pink", color: "#ff00aa" }] }),
-      },
+      list: { useQuery: () => ({ data: [{ id: "neon-pink", name: "Neon Pink", color: "#ff00aa" }] }) },
     },
     tryOn: {
-      process: {
-        useMutation: () => ({ mutateAsync: mocks.mutateAsync }),
-      },
+      process: { useMutation: () => ({ mutateAsync: mocks.mutateAsync }) },
+      activeTask: { useQuery: () => ({ data: mocks.activeTaskData, refetch: mocks.refetchActiveTask }) },
     },
   },
 }));
@@ -56,20 +53,12 @@ vi.mock("@/components/ui/dialog", () => ({
   DialogHeader: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   DialogTitle: ({ children }: { children: React.ReactNode }) => <h2>{children}</h2>,
 }));
-vi.mock("lucide-react", () => ({
-  Zap: () => null,
-  Upload: () => null,
-  LogOut: () => null,
-  Shirt: () => null,
-}));
+vi.mock("lucide-react", () => ({ Zap: () => null, Upload: () => null, LogOut: () => null, Shirt: () => null }));
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
   let reject!: (reason?: unknown) => void;
-  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
-    resolve = resolvePromise;
-    reject = rejectPromise;
-  });
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => { resolve = resolvePromise; reject = rejectPromise; });
   return { promise, resolve, reject };
 }
 
@@ -78,7 +67,6 @@ async function selectOwnedPhotoAndShirt() {
   Object.defineProperty(file, "arrayBuffer", { value: async () => new ArrayBuffer(4) });
   const fileInput = document.querySelector<HTMLInputElement>("input[type=file]");
   if (!fileInput) throw new Error("Expected a file input");
-
   fireEvent.change(fileInput, { target: { files: [file] } });
   await waitFor(() => expect(screen.getByAltText("Selected upload")).toBeTruthy());
   fireEvent.click(screen.getByText("Neon Pink"));
@@ -92,15 +80,12 @@ describe("Dashboard Try On Now lifecycle", () => {
     mocks.mutateAsync.mockReset();
     mocks.refetchCredits.mockReset();
     mocks.refetchPhotos.mockReset();
+    mocks.refetchActiveTask.mockReset();
+    mocks.activeTaskData = null;
     mocks.toastError.mockReset();
     mocks.toastSuccess.mockReset();
-    mocks.refetchPhotos.mockResolvedValue({
-      data: [{ id: 7, photoKey: "photos/1/test.jpg", photoUrl: "https://storage.example.test/photos/1/test.jpg" }],
-    });
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ photoKey: "photos/1/test.jpg" }),
-    }));
+    mocks.refetchPhotos.mockResolvedValue({ data: [{ id: 7, photoKey: "photos/1/test.jpg", photoUrl: "https://storage.example.test/photos/1/test.jpg" }] });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ photoKey: "photos/1/test.jpg" }) }));
     vi.stubGlobal("btoa", (value: string) => value);
   });
 
@@ -111,55 +96,40 @@ describe("Dashboard Try On Now lifecycle", () => {
     cleanup();
   });
 
-  it("shows finalizing progress, surfaces a timeout, and returns the button to a retryable state", async () => {
+  it("keeps the live task log visible at finalizing progress and then returns the button to a retryable state", async () => {
     const request = deferred<never>();
     mocks.mutateAsync.mockReturnValue(request.promise);
     render(<Dashboard />);
     await selectOwnedPhotoAndShirt();
-
     vi.useFakeTimers();
     fireEvent.click(screen.getByRole("button", { name: "Try on now" }));
-    await act(async () => undefined);
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(15_000);
-    });
+    await act(async () => { await vi.advanceTimersByTimeAsync(15_000); });
 
     expect(screen.getByRole("button", { name: "FINALIZING: 92% complete" }).textContent).toContain("FINALIZING • 92%");
+    expect(screen.getByText("LIVE TASK LOG")).toBeTruthy();
+    expect(screen.getByText("Waiting for server task")).toBeTruthy();
+    expect(screen.getByText(/The AI provider is still working/)).toBeTruthy();
 
-    await act(async () => {
-      request.reject(new Error("Image generation timed out after 75 seconds."));
-      await Promise.resolve();
-    });
-
+    const safeMessage = "We couldn't complete the AI try-on this time. Your credit has been returned. Please try again in a moment.";
+    await act(async () => { request.reject(new Error(safeMessage)); await Promise.resolve(); });
     const retryButton = screen.getByRole("button", { name: "Try on now" });
     expect(retryButton.textContent).toContain("TRY ON NOW");
     expect(retryButton.hasAttribute("disabled")).toBe(false);
-    expect(mocks.toastError).toHaveBeenCalledWith("Image generation timed out after 75 seconds.");
+    expect(mocks.toastError).toHaveBeenCalledWith(safeMessage);
   });
 
-  it("surfaces a provider failure and returns the button to a retryable state", async () => {
+  it("renders server-confirmed stages instead of only a local waiting indicator", async () => {
     const request = deferred<never>();
     mocks.mutateAsync.mockReturnValue(request.promise);
+    mocks.activeTaskData = {
+      id: 91,
+      stages: [{ key: "image_generation", label: "AI shirt generation in progress", state: "active", timestamp: 1 }],
+    };
     render(<Dashboard />);
     await selectOwnedPhotoAndShirt();
-
-    vi.useFakeTimers();
     fireEvent.click(screen.getByRole("button", { name: "Try on now" }));
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(15_000);
-    });
-    expect(screen.getByRole("button", { name: "FINALIZING: 92% complete" }).textContent).toContain("FINALIZING • 92%");
-
-    const providerMessage = "Image generation request failed: provider temporarily unavailable.";
-    await act(async () => {
-      request.reject(new Error(providerMessage));
-      await Promise.resolve();
-    });
-
-    const retryButton = screen.getByRole("button", { name: "Try on now" });
-    expect(retryButton.textContent).toContain("TRY ON NOW");
-    expect(retryButton.hasAttribute("disabled")).toBe(false);
-    expect(mocks.toastError).toHaveBeenCalledWith(providerMessage);
+    expect(screen.getByText("AI shirt generation in progress")).toBeTruthy();
+    await act(async () => { request.reject(new Error("Unable to finish")); await Promise.resolve(); });
   });
 
   it("shows completion and then restores Try On Now after a successful generation", async () => {
@@ -167,21 +137,13 @@ describe("Dashboard Try On Now lifecycle", () => {
     mocks.mutateAsync.mockReturnValue(request.promise);
     render(<Dashboard />);
     await selectOwnedPhotoAndShirt();
-
     vi.useFakeTimers();
     fireEvent.click(screen.getByRole("button", { name: "Try on now" }));
     await act(async () => {
-      request.resolve({
-        resultImageUrl: "https://storage.example.test/generated/result.png",
-        shirtApplied: "Neon Pink",
-        creditsRemaining: 4,
-      });
+      request.resolve({ resultImageUrl: "https://storage.example.test/generated/result.png", shirtApplied: "Neon Pink", creditsRemaining: 4 });
       await Promise.resolve();
     });
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(180);
-    });
-
+    await act(async () => { await vi.advanceTimersByTimeAsync(180); });
     expect(screen.getByText("TRY-ON RESULT")).toBeTruthy();
     const retryButton = screen.getByRole("button", { name: "Try on now" });
     expect(retryButton.textContent).toContain("TRY ON NOW");

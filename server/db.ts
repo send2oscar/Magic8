@@ -248,6 +248,84 @@ export async function updateTryOnHistory(
   }
 }
 
+export type TryOnTaskStage = {
+  key: string;
+  label: string;
+  state: "active" | "completed" | "error";
+  detail?: string;
+  timestamp: number;
+};
+
+/**
+ * Save non-final, user-safe diagnostic stages without setting completedAt.
+ * The same existing history column is used to avoid a schema migration for
+ * short-lived task state.
+ */
+export async function updateTryOnTaskStages(historyId: number, stages: TryOnTaskStage[]): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+
+  try {
+    await db
+      .update(tryOnHistory)
+      .set({ bubbleApiResponse: JSON.stringify({ version: 1, taskStages: stages }) })
+      .where(eq(tryOnHistory.id, historyId));
+    return true;
+  } catch (error) {
+    console.error("[Database] Failed to update try-on task stages:", error);
+    return false;
+  }
+}
+
+function parseTaskStages(serialized: string | null): TryOnTaskStage[] {
+  if (!serialized) return [];
+  try {
+    const parsed = JSON.parse(serialized) as { taskStages?: unknown };
+    if (!Array.isArray(parsed.taskStages)) return [];
+    return parsed.taskStages.filter((stage): stage is TryOnTaskStage => (
+      typeof stage === "object" && stage !== null &&
+      typeof (stage as TryOnTaskStage).key === "string" &&
+      typeof (stage as TryOnTaskStage).label === "string" &&
+      ["active", "completed", "error"].includes((stage as TryOnTaskStage).state) &&
+      typeof (stage as TryOnTaskStage).timestamp === "number"
+    ));
+  } catch {
+    return [];
+  }
+}
+
+/** Return only the signed-in user's latest unfinished try-on and safe task stages. */
+export async function getActiveTryOnTask(userId: number) {
+  const db = await getDb();
+  if (!db) return null;
+
+  try {
+    const rows = await db
+      .select({
+        id: tryOnHistory.id,
+        shirtStyle: tryOnHistory.shirtStyle,
+        createdAt: tryOnHistory.createdAt,
+        bubbleApiResponse: tryOnHistory.bubbleApiResponse,
+      })
+      .from(tryOnHistory)
+      .where(and(eq(tryOnHistory.userId, userId), eq(tryOnHistory.status, "pending")))
+      .orderBy(desc(tryOnHistory.id))
+      .limit(1);
+
+    const task = rows[0];
+    if (!task) return null;
+    return {
+      id: task.id,
+      shirtStyle: task.shirtStyle,
+      createdAt: task.createdAt,
+      stages: parseTaskStages(task.bubbleApiResponse),
+    };
+  } catch (error) {
+    console.error("[Database] Failed to get active try-on task:", error);
+    return null;
+  }
+}
+
 /** Return only the signed-in user's image history, with photo ownership checked in the join. */
 export async function getUserGallery(userId: number, limit: number = 60) {
   const db = await getDb();

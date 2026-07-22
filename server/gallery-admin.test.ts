@@ -2,11 +2,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { TrpcContext } from "./_core/context";
 
 const mocks = vi.hoisted(() => ({
-  getUserCredits: vi.fn(), deductCredits: vi.fn(), addCredits: vi.fn(), saveUserPhoto: vi.fn(), getUserPhotos: vi.fn(), saveTryOnHistory: vi.fn(), getTryOnHistory: vi.fn(), updateTryOnHistory: vi.fn(), getUserGallery: vi.fn(), getAdminUsers: vi.fn(), getAdminUserProfile: vi.fn(),
+  getUserCredits: vi.fn(), deductCredits: vi.fn(), addCredits: vi.fn(), saveUserPhoto: vi.fn(), getUserPhotos: vi.fn(), saveTryOnHistory: vi.fn(), getTryOnHistory: vi.fn(), updateTryOnHistory: vi.fn(), updateTryOnTaskStages: vi.fn(), getActiveTryOnTask: vi.fn(), getUserGallery: vi.fn(), getAdminUsers: vi.fn(), getAdminUserProfile: vi.fn(),
 }));
 
 vi.mock("./db", () => ({
-  getUserCredits: mocks.getUserCredits, deductCredits: mocks.deductCredits, addCredits: mocks.addCredits, saveUserPhoto: mocks.saveUserPhoto, getUserPhotos: mocks.getUserPhotos, saveTryOnHistory: mocks.saveTryOnHistory, getTryOnHistory: mocks.getTryOnHistory, updateTryOnHistory: mocks.updateTryOnHistory, getUserGallery: mocks.getUserGallery, getAdminUsers: mocks.getAdminUsers, getAdminUserProfile: mocks.getAdminUserProfile,
+  getUserCredits: mocks.getUserCredits, deductCredits: mocks.deductCredits, addCredits: mocks.addCredits, saveUserPhoto: mocks.saveUserPhoto, getUserPhotos: mocks.getUserPhotos, saveTryOnHistory: mocks.saveTryOnHistory, getTryOnHistory: mocks.getTryOnHistory, updateTryOnHistory: mocks.updateTryOnHistory, updateTryOnTaskStages: mocks.updateTryOnTaskStages, getActiveTryOnTask: mocks.getActiveTryOnTask, getUserGallery: mocks.getUserGallery, getAdminUsers: mocks.getAdminUsers, getAdminUserProfile: mocks.getAdminUserProfile,
 }));
 
 import { appRouter } from "./routers";

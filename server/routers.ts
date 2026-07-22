@@ -16,10 +16,14 @@ import {
   getAdminUsers,
   getUserGallery,
   updateTryOnHistory,
+  updateTryOnTaskStages,
+  getActiveTryOnTask,
+  type TryOnTaskStage,
 } from "./db";
-import { storagePut, storageGetSignedUrl } from "./storage";
-import { generateImage } from "./_core/imageGeneration";
+import { storagePut } from "./storage";
+import { generateImage, ImageGenerationRequestError } from "./_core/imageGeneration";
 import { clearAdminSession, createAdminSession, hasAdminSession, isAdminLoginConfigured, verifyAdminCredentials } from "./adminAuth";
+import { createTryOnSourceUrl } from "./tryOnSource";
 
 // Shirt styles available for try-on
 const SHIRT_STYLES = [
@@ -53,32 +57,19 @@ class SourceImageAccessError extends Error {
   }
 }
 
-async function readSourceImageForGeneration(photoKey: string) {
-  let sourceImageUrl: string;
-  try {
-    sourceImageUrl = await storageGetSignedUrl(photoKey);
-    const parsedUrl = new URL(sourceImageUrl);
-    if (parsedUrl.protocol !== "https:" && parsedUrl.protocol !== "http:") {
-      throw new SourceImageAccessError();
-    }
-  } catch {
-    throw new SourceImageAccessError();
+/**
+ * mysql2 deployments can return either a ResultSetHeader or a tuple whose
+ * first value is the ResultSetHeader. Normalize that transport difference at
+ * the boundary before task-stage persistence depends on the new record ID.
+ */
+function getInsertedHistoryId(result: unknown): number | null {
+  const candidates = Array.isArray(result) ? result : [result];
+  for (const candidate of candidates) {
+    if (!candidate || typeof candidate !== "object") continue;
+    const insertId = Number((candidate as { insertId?: unknown }).insertId);
+    if (Number.isSafeInteger(insertId) && insertId > 0) return insertId;
   }
-
-  try {
-    const sourceResponse = await fetch(sourceImageUrl);
-    if (!sourceResponse.ok) throw new SourceImageAccessError();
-    const imageBytes = Buffer.from(await sourceResponse.arrayBuffer());
-    if (!imageBytes.length) throw new SourceImageAccessError();
-    const contentType = sourceResponse.headers.get("content-type")?.split(";")[0];
-    return {
-      b64Json: imageBytes.toString("base64"),
-      mimeType: contentType?.startsWith("image/") ? contentType : getImageMimeType(photoKey),
-    };
-  } catch (error) {
-    if (error instanceof SourceImageAccessError) throw error;
-    throw new SourceImageAccessError();
-  }
+  return null;
 }
 
 export const appRouter = router({
@@ -245,6 +236,46 @@ export const appRouter = router({
       )
       .mutation(async ({ ctx, input }) => {
         let creditsDeducted = false;
+        let historyId: number | null = null;
+        let taskFinalized = false;
+        const taskStages: TryOnTaskStage[] = [];
+
+        const persistTaskStages = async () => {
+          if (historyId) await updateTryOnTaskStages(historyId, taskStages);
+        };
+
+        const beginTaskStage = async (key: string, label: string, detail?: string) => {
+          for (let index = taskStages.length - 1; index >= 0; index -= 1) {
+            if (taskStages[index].state === "active") {
+              taskStages[index] = { ...taskStages[index], state: "completed" };
+              break;
+            }
+          }
+          taskStages.push({ key, label, state: "active", detail, timestamp: Date.now() });
+          await persistTaskStages();
+        };
+
+        const completeActiveTaskStage = async () => {
+          for (let index = taskStages.length - 1; index >= 0; index -= 1) {
+            if (taskStages[index].state === "active") {
+              taskStages[index] = { ...taskStages[index], state: "completed" };
+              break;
+            }
+          }
+          await persistTaskStages();
+        };
+
+        const failActiveTaskStage = async (detail: string) => {
+          for (let index = taskStages.length - 1; index >= 0; index -= 1) {
+            if (taskStages[index].state === "active") {
+              taskStages[index] = { ...taskStages[index], state: "error", detail };
+              break;
+            }
+          }
+          taskStages.push({ key: "failed", label: "Try-on request failed", state: "error", detail, timestamp: Date.now() });
+          await persistTaskStages();
+        };
+
         try {
           // Check the balance before resolving the selected record so a user who
           // cannot afford a try-on receives the correct actionable response.
@@ -276,6 +307,13 @@ export const appRouter = router({
             });
           }
 
+          taskStages.push({
+            key: "photo_verified",
+            label: "Photo ownership verified",
+            state: "completed",
+            timestamp: Date.now(),
+          });
+
           // Create try-on history record with pending status
           const historyRecord = await saveTryOnHistory({
             userId: ctx.user.id,
@@ -292,6 +330,12 @@ export const appRouter = router({
             });
           }
 
+          historyId = getInsertedHistoryId(historyRecord);
+          if (!historyId) {
+            throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to create try-on record" });
+          }
+          await beginTaskStage("task_created", "Processing task created");
+
           // Deduct credits from user (server-side enforcement)
           const creditDeducted = await deductCredits(ctx.user.id, 1);
           if (!creditDeducted) {
@@ -301,6 +345,7 @@ export const appRouter = router({
             });
           }
           creditsDeducted = true;
+          await beginTaskStage("credit_reserved", "One credit reserved");
 
           // Generate shirt try-on image using AI image generation
           try {
@@ -320,21 +365,34 @@ The new shirt should be ${shirtInfo.name} with a ${shirtInfo.color} color.`;
             console.log("[Shirt Try-On] Processing shirt change for:", shirtInfo.name);
             console.log("[Shirt Try-On] Using AI image generation to create realistic shirt change");
             
-            // Read the signed source privately on this server and pass image bytes to
-            // the provider. The provider never receives the signed storage URL.
-            const sourceImage = await readSourceImageForGeneration(selectedPhoto.photoKey);
+            // The provider receives a short-lived application relay URL, not the
+            // original signed storage URL or an unsupported inline binary payload.
+            await beginTaskStage("source_image", "Preparing selected photo securely");
+            let sourceImageUrl: string;
+            try {
+              sourceImageUrl = createTryOnSourceUrl(ctx.req, selectedPhoto.photoKey);
+            } catch {
+              throw new SourceImageAccessError();
+            }
+            await completeActiveTaskStage();
             
             // Call the Manus image generation API with the original image for editing
+            await beginTaskStage("image_generation", "AI shirt generation in progress", "This can take a while. The live log will keep updating while the provider works.");
             const result = await generateImage({
               prompt: prompt,
               originalImages: [
                 {
-                  b64Json: sourceImage.b64Json,
-                  mimeType: sourceImage.mimeType,
+                  url: sourceImageUrl,
+                  mimeType: getImageMimeType(selectedPhoto.photoKey),
                 }
               ],
               model: "MODEL_GPT_IMAGE_2",
               quality: "high",
+              onRetry: ({ fromQuality, toQuality }) => beginTaskStage(
+                "image_generation_retry",
+                "Retrying AI generation",
+                `The provider rejected the ${fromQuality}-quality edit request, so we are retrying at ${toQuality} quality.`,
+              ),
             });
             
             if (!result.url) {
@@ -342,14 +400,16 @@ The new shirt should be ${shirtInfo.name} with a ${shirtInfo.color} color.`;
             }
             
             console.log("[Shirt Try-On] Success! Generated image URL:", result.url);
-            const historyId = Number((historyRecord as { insertId?: number }).insertId);
-            if (Number.isFinite(historyId) && historyId > 0) {
-              await updateTryOnHistory(historyId, {
-                status: "success",
-                resultImageUrl: result.url,
-                creditsDeducted: 1,
-              });
-            }
+            await beginTaskStage("result_saving", "Saving generated result");
+            await updateTryOnHistory(historyId, {
+              status: "success",
+              resultImageUrl: result.url,
+              creditsDeducted: 1,
+            });
+            await completeActiveTaskStage();
+            taskStages.push({ key: "completed", label: "Try-on complete", state: "completed", timestamp: Date.now() });
+            await persistTaskStages();
+            taskFinalized = true;
             return {
               success: true,
               resultImageUrl: result.url,
@@ -360,6 +420,7 @@ The new shirt should be ${shirtInfo.name} with a ${shirtInfo.color} color.`;
             const isSourceImageAccessError = genError instanceof SourceImageAccessError;
             console.error("[Shirt Try-On] Generation failed", {
               category: isSourceImageAccessError ? "source_image_access" : "provider_or_processing",
+              providerStatus: genError instanceof ImageGenerationRequestError ? genError.status : undefined,
             });
             if (creditsDeducted) {
               const refunded = await addCredits(ctx.user.id, 1);
@@ -367,18 +428,29 @@ The new shirt should be ${shirtInfo.name} with a ${shirtInfo.color} color.`;
                 console.error("[Shirt Try-On] Failed to refund the credit after generation failure");
               }
             }
-            const historyId = Number((historyRecord as { insertId?: number }).insertId);
-            if (Number.isFinite(historyId) && historyId > 0) {
-              await updateTryOnHistory(historyId, { status: "failed", creditsDeducted: 0 });
-            }
+            const safeMessage = isSourceImageAccessError
+              ? "We couldn't access the selected photo for the AI edit. Your credit has been returned. Please upload that photo again and retry."
+              : "We couldn't complete the AI try-on this time. Your credit has been returned. Please try again in a moment.";
+            await failActiveTaskStage(safeMessage);
+            await updateTryOnHistory(historyId, { status: "failed", creditsDeducted: 0 });
+            taskFinalized = true;
             throw new TRPCError({
               code: "INTERNAL_SERVER_ERROR",
-              message: isSourceImageAccessError
-                ? "We couldn't access the selected photo for the AI edit. Your credit has been returned. Please upload that photo again and retry."
-                : "We couldn't complete the AI try-on this time. Your credit has been returned. Please try again in a moment.",
+              message: safeMessage,
             });
           }
         } catch (error) {
+          if (historyId && !taskFinalized) {
+            const safeMessage = "We couldn't complete the AI try-on this time. Your credit has been returned. Please try again in a moment.";
+            if (creditsDeducted) {
+              await addCredits(ctx.user.id, 1);
+              creditsDeducted = false;
+            }
+            await failActiveTaskStage(safeMessage);
+            await updateTryOnHistory(historyId, { status: "failed", creditsDeducted: 0 });
+            taskFinalized = true;
+            throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: safeMessage });
+          }
           if (error instanceof TRPCError) {
             throw error;
           }
@@ -394,6 +466,8 @@ The new shirt should be ${shirtInfo.name} with a ${shirtInfo.color} color.`;
       const history = await getTryOnHistory(ctx.user.id, 20);
       return history;
     }),
+
+    activeTask: protectedProcedure.query(({ ctx }) => getActiveTryOnTask(ctx.user.id)),
   }),
 });
 

@@ -34,11 +34,25 @@ export type GenerateImageOptions = {
   model?: string;
   /** Generation quality, e.g. "medium" | "high". Defaults to "medium" for GPT Image 2. */
   quality?: string;
+  /** Reports a safe provider-retry transition to the caller for task diagnostics. */
+  onRetry?: (details: { fromQuality: string; toQuality: string; status: number }) => void | Promise<void>;
 };
 
 export type GenerateImageResponse = {
   url?: string;
 };
+
+/** A safe server-side error shape that never includes an upstream response body. */
+export class ImageGenerationRequestError extends Error {
+  constructor(public readonly status: number) {
+    super(`Image generation service returned HTTP ${status}`);
+    this.name = "ImageGenerationRequestError";
+  }
+}
+
+function shouldRetryAtMediumQuality(status: number): boolean {
+  return status === 400 || status === 408 || status === 409 || status === 413 || status === 422 || status === 429 || status >= 500;
+}
 
 export async function generateImage(
   options: GenerateImageOptions
@@ -60,50 +74,63 @@ export async function generateImage(
   ).toString();
 
   const model = options.model ?? DEFAULT_IMAGE_MODEL;
-  const quality =
-    options.quality ?? (model === DEFAULT_IMAGE_MODEL ? DEFAULT_IMAGE_QUALITY : undefined);
-  let response: Response;
-  response = await fetch(fullUrl, {
-    method: "POST",
-    headers: {
-      accept: "application/json",
-      "content-type": "application/json",
-      "connect-protocol-version": "1",
-      authorization: `Bearer ${ENV.forgeApiKey}`,
-    },
-    body: JSON.stringify({
-      prompt: options.prompt,
-      original_images: options.originalImages || [],
-      model,
-      ...(quality ? { quality } : {}),
-    }),
-  });
+  const requestedQuality = options.quality ?? (model === DEFAULT_IMAGE_MODEL ? DEFAULT_IMAGE_QUALITY : undefined);
 
-  if (!response.ok) {
-    const detail = await response.text().catch(() => "");
-    throw new Error(
-      `Image generation request failed (${response.status} ${response.statusText})${detail ? `: ${detail}` : ""}`
-    );
-  }
+  const requestGeneration = async (quality: string | undefined): Promise<GenerateImageResponse> => {
+    const response = await fetch(fullUrl, {
+      method: "POST",
+      headers: {
+        accept: "application/json",
+        "content-type": "application/json",
+        "connect-protocol-version": "1",
+        authorization: `Bearer ${ENV.forgeApiKey}`,
+      },
+      body: JSON.stringify({
+        prompt: options.prompt,
+        original_images: options.originalImages || [],
+        model,
+        ...(quality ? { quality } : {}),
+      }),
+    });
 
-  const result = (await response.json()) as {
-    image: {
-      b64Json: string;
-      mimeType: string;
+    if (!response.ok) {
+      // Consume the response for connection reuse but do not retain or expose
+      // provider text, which can contain URLs, request metadata, or secrets.
+      await response.text().catch(() => "");
+      throw new ImageGenerationRequestError(response.status);
+    }
+
+    const result = (await response.json()) as {
+      image: {
+        b64Json: string;
+        mimeType: string;
+      };
     };
-  };
-  const base64Data = result.image.b64Json;
-  const buffer = Buffer.from(base64Data, "base64");
+    const base64Data = result.image.b64Json;
+    const buffer = Buffer.from(base64Data, "base64");
 
-  // Save to S3
-  const { url } = await storagePut(
-    `generated/${Date.now()}.png`,
-    buffer,
-    result.image.mimeType
-  );
-  return {
-    url,
+    const { url } = await storagePut(
+      `generated/${Date.now()}.png`,
+      buffer,
+      result.image.mimeType
+    );
+    return { url };
   };
+
+  try {
+    return await requestGeneration(requestedQuality);
+  } catch (error) {
+    const canRetryAtMedium = error instanceof ImageGenerationRequestError
+      && requestedQuality === "high"
+      && options.originalImages?.length
+      && shouldRetryAtMediumQuality(error.status);
+
+    if (!canRetryAtMedium) throw error;
+
+    console.warn("[Image Generation] Retrying edit at medium quality", { status: error.status });
+    await options.onRetry?.({ fromQuality: "high", toQuality: "medium", status: error.status });
+    return requestGeneration("medium");
+  }
 }
 
 export type ImageModelInfo = {
