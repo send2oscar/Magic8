@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const storagePut = vi.fn();
+const mocks = vi.hoisted(() => ({ storagePut: vi.fn() }));
 
-vi.mock("./storage", () => ({ storagePut }));
+vi.mock("server/storage", () => ({ storagePut: mocks.storagePut }));
 vi.mock("./_core/env", () => ({
   ENV: {
     forgeApiUrl: "https://forge.example.test/",
@@ -12,25 +12,30 @@ vi.mock("./_core/env", () => ({
 
 import { generateImage } from "./_core/imageGeneration";
 
-describe("generateImage timeout", () => {
+describe("generateImage without an application abort timer", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.clearAllMocks();
   });
 
-  it("aborts an upstream image request and does not store a result after the configured timeout", async () => {
-    const fetchMock = vi.fn((_url: string, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
-      init?.signal?.addEventListener("abort", () => {
-        const abortError = new Error("aborted");
-        abortError.name = "AbortError";
-        reject(abortError);
-      });
+  it("waits for the upstream response and does not attach an abort signal", async () => {
+    let resolveResponse!: (response: Response) => void;
+    const fetchMock = vi.fn(() => new Promise<Response>((resolve) => {
+      resolveResponse = resolve;
     }));
     vi.stubGlobal("fetch", fetchMock);
+    mocks.storagePut.mockResolvedValue({ key: "generated/result.png", url: "/manus-storage/generated/result.png" });
 
-    await expect(generateImage({ prompt: "change the shirt", timeoutMs: 5 })).rejects.toThrow(
-      "Image generation timed out after 0 seconds.",
-    );
-    expect(storagePut).not.toHaveBeenCalled();
+    const generation = generateImage({ prompt: "change the shirt" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]?.[1]?.signal).toBeUndefined();
+
+    resolveResponse({
+      ok: true,
+      json: async () => ({ image: { b64Json: Buffer.from("result").toString("base64"), mimeType: "image/png" } }),
+    } as Response);
+
+    await expect(generation).resolves.toEqual({ url: "/manus-storage/generated/result.png" });
+    expect(mocks.storagePut).toHaveBeenCalledOnce();
   });
 });

@@ -1,7 +1,7 @@
 import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
-import { publicProcedure, router, protectedProcedure } from "./_core/trpc";
+import { passwordAdminProcedure, publicProcedure, router, protectedProcedure } from "./_core/trpc";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import {
@@ -12,9 +12,14 @@ import {
   getUserPhotos,
   saveTryOnHistory,
   getTryOnHistory,
+  getAdminUserProfile,
+  getAdminUsers,
+  getUserGallery,
+  updateTryOnHistory,
 } from "./db";
 import { storagePut, storageGetSignedUrl } from "./storage";
 import { generateImage } from "./_core/imageGeneration";
+import { clearAdminSession, createAdminSession, hasAdminSession, isAdminLoginConfigured, verifyAdminCredentials } from "./adminAuth";
 
 // Shirt styles available for try-on
 const SHIRT_STYLES = [
@@ -41,6 +46,41 @@ function getImageMimeType(fileKey: string): string {
   }
 }
 
+class SourceImageAccessError extends Error {
+  constructor() {
+    super("The selected source image could not be retrieved from storage.");
+    this.name = "SourceImageAccessError";
+  }
+}
+
+async function readSourceImageForGeneration(photoKey: string) {
+  let sourceImageUrl: string;
+  try {
+    sourceImageUrl = await storageGetSignedUrl(photoKey);
+    const parsedUrl = new URL(sourceImageUrl);
+    if (parsedUrl.protocol !== "https:" && parsedUrl.protocol !== "http:") {
+      throw new SourceImageAccessError();
+    }
+  } catch {
+    throw new SourceImageAccessError();
+  }
+
+  try {
+    const sourceResponse = await fetch(sourceImageUrl);
+    if (!sourceResponse.ok) throw new SourceImageAccessError();
+    const imageBytes = Buffer.from(await sourceResponse.arrayBuffer());
+    if (!imageBytes.length) throw new SourceImageAccessError();
+    const contentType = sourceResponse.headers.get("content-type")?.split(";")[0];
+    return {
+      b64Json: imageBytes.toString("base64"),
+      mimeType: contentType?.startsWith("image/") ? contentType : getImageMimeType(photoKey),
+    };
+  } catch (error) {
+    if (error instanceof SourceImageAccessError) throw error;
+    throw new SourceImageAccessError();
+  }
+}
+
 export const appRouter = router({
   system: systemRouter,
   auth: router({
@@ -52,6 +92,30 @@ export const appRouter = router({
         success: true,
       } as const;
     }),
+  }),
+
+  gallery: router({
+    list: protectedProcedure.query(({ ctx }) => getUserGallery(ctx.user.id)),
+  }),
+
+  admin: router({
+    session: publicProcedure.query(({ ctx }) => ({ authenticated: hasAdminSession(ctx.req), configured: isAdminLoginConfigured() })),
+    login: publicProcedure
+      .input(z.object({ username: z.string().min(1).max(128), password: z.string().min(1).max(256) }))
+      .mutation(({ ctx, input }) => {
+        if (!verifyAdminCredentials(input.username, input.password)) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Invalid administrator credentials." });
+        }
+        createAdminSession(ctx.req, ctx.res);
+        return { success: true } as const;
+      }),
+    logout: publicProcedure.mutation(({ ctx }) => {
+      clearAdminSession(ctx.req, ctx.res);
+      return { success: true } as const;
+    }),
+    listUsers: passwordAdminProcedure.query(() => getAdminUsers()),
+    userProfile: passwordAdminProcedure.input(z.object({ userId: z.number().int().positive() })).query(({ input }) => getAdminUserProfile(input.userId)),
+    userGallery: passwordAdminProcedure.input(z.object({ userId: z.number().int().positive() })).query(({ input }) => getUserGallery(input.userId)),
   }),
 
   // Credits management
@@ -218,7 +282,7 @@ export const appRouter = router({
             photoId: input.photoId,
             shirtStyle: input.shirtStyle,
             status: "pending",
-            creditsDeducted: 1,
+            creditsDeducted: 0,
           });
 
           if (!historyRecord) {
@@ -256,23 +320,17 @@ The new shirt should be ${shirtInfo.name} with a ${shirtInfo.color} color.`;
             console.log("[Shirt Try-On] Processing shirt change for:", shirtInfo.name);
             console.log("[Shirt Try-On] Using AI image generation to create realistic shirt change");
             
-            // Use an externally reachable, temporary object-storage URL rather than
-            // the browser-facing /manus-storage path.
-            const sourceImageUrl = await storageGetSignedUrl(selectedPhoto.photoKey);
-            const sourceUrl = new URL(sourceImageUrl);
-            if (sourceUrl.protocol !== "https:" && sourceUrl.protocol !== "http:") {
-              throw new Error("Storage did not return an HTTP(S) source image URL");
-            }
-            
-            console.log("[Shirt Try-On] Resolved a signed HTTPS storage URL for generation");
+            // Read the signed source privately on this server and pass image bytes to
+            // the provider. The provider never receives the signed storage URL.
+            const sourceImage = await readSourceImageForGeneration(selectedPhoto.photoKey);
             
             // Call the Manus image generation API with the original image for editing
             const result = await generateImage({
               prompt: prompt,
               originalImages: [
                 {
-                  url: sourceImageUrl,
-                  mimeType: getImageMimeType(selectedPhoto.photoKey),
+                  b64Json: sourceImage.b64Json,
+                  mimeType: sourceImage.mimeType,
                 }
               ],
               model: "MODEL_GPT_IMAGE_2",
@@ -284,6 +342,14 @@ The new shirt should be ${shirtInfo.name} with a ${shirtInfo.color} color.`;
             }
             
             console.log("[Shirt Try-On] Success! Generated image URL:", result.url);
+            const historyId = Number((historyRecord as { insertId?: number }).insertId);
+            if (Number.isFinite(historyId) && historyId > 0) {
+              await updateTryOnHistory(historyId, {
+                status: "success",
+                resultImageUrl: result.url,
+                creditsDeducted: 1,
+              });
+            }
             return {
               success: true,
               resultImageUrl: result.url,
@@ -291,16 +357,25 @@ The new shirt should be ${shirtInfo.name} with a ${shirtInfo.color} color.`;
               shirtApplied: shirtInfo.name,
             }
           } catch (genError) {
-            console.error("Image generation error:", genError);
+            const isSourceImageAccessError = genError instanceof SourceImageAccessError;
+            console.error("[Shirt Try-On] Generation failed", {
+              category: isSourceImageAccessError ? "source_image_access" : "provider_or_processing",
+            });
             if (creditsDeducted) {
               const refunded = await addCredits(ctx.user.id, 1);
               if (!refunded) {
                 console.error("[Shirt Try-On] Failed to refund the credit after generation failure");
               }
             }
+            const historyId = Number((historyRecord as { insertId?: number }).insertId);
+            if (Number.isFinite(historyId) && historyId > 0) {
+              await updateTryOnHistory(historyId, { status: "failed", creditsDeducted: 0 });
+            }
             throw new TRPCError({
               code: "INTERNAL_SERVER_ERROR",
-              message: `Failed to generate shirt try-on image: ${genError instanceof Error ? genError.message : 'Unknown error'}`,
+              message: isSourceImageAccessError
+                ? "We couldn't access the selected photo for the AI edit. Your credit has been returned. Please upload that photo again and retry."
+                : "We couldn't complete the AI try-on this time. Your credit has been returned. Please try again in a moment.",
             });
           }
         } catch (error) {

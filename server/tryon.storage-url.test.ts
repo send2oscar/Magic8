@@ -9,6 +9,10 @@ const mocks = vi.hoisted(() => ({
   getUserPhotos: vi.fn(),
   saveTryOnHistory: vi.fn(),
   getTryOnHistory: vi.fn(),
+  updateTryOnHistory: vi.fn(),
+  getUserGallery: vi.fn(),
+  getAdminUsers: vi.fn(),
+  getAdminUserProfile: vi.fn(),
   storagePut: vi.fn(),
   storageGetSignedUrl: vi.fn(),
   generateImage: vi.fn(),
@@ -22,6 +26,10 @@ vi.mock("./db", () => ({
   getUserPhotos: mocks.getUserPhotos,
   saveTryOnHistory: mocks.saveTryOnHistory,
   getTryOnHistory: mocks.getTryOnHistory,
+  updateTryOnHistory: mocks.updateTryOnHistory,
+  getUserGallery: mocks.getUserGallery,
+  getAdminUsers: mocks.getAdminUsers,
+  getAdminUserProfile: mocks.getAdminUserProfile,
 }));
 
 vi.mock("./storage", () => ({
@@ -59,6 +67,11 @@ describe("tryOn.process source image resolution", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      arrayBuffer: async () => new Uint8Array([1, 2, 3, 4]).buffer,
+      headers: new Headers({ "content-type": "image/jpeg" }),
+    }));
     mocks.getUserCredits.mockResolvedValue(10);
     mocks.deductCredits.mockResolvedValue(true);
     mocks.addCredits.mockResolvedValue(true);
@@ -76,7 +89,7 @@ describe("tryOn.process source image resolution", () => {
     mocks.generateImage.mockResolvedValue({ url: "/manus-storage/generated/result.png" });
   });
 
-  it("uses a signed HTTPS storage URL rather than the client-provided relative path", async () => {
+  it("reads the signed source privately and sends buffered image bytes rather than the URL to the provider", async () => {
     const caller = appRouter.createCaller(createAuthContext());
 
     const result = await caller.tryOn.process({
@@ -89,13 +102,13 @@ describe("tryOn.process source image resolution", () => {
       expect.objectContaining({
         originalImages: [
           expect.objectContaining({
-            url: signedStorageUrl,
+            b64Json: Buffer.from([1, 2, 3, 4]).toString("base64"),
             mimeType: "image/jpeg",
           }),
         ],
       }),
     );
-    expect(mocks.generateImage.mock.calls[0]?.[0].originalImages?.[0]?.url).not.toContain("localhost");
+    expect(mocks.generateImage.mock.calls[0]?.[0].originalImages?.[0]).not.toHaveProperty("url");
     expect(result).toMatchObject({
       success: true,
       resultImageUrl: "/manus-storage/generated/result.png",

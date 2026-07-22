@@ -1,4 +1,4 @@
-import { eq, and } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import { InsertUser, users, userPhotos, InsertUserPhoto, tryOnHistory, InsertTryOnHistory } from "../drizzle/schema";
 import { ENV } from './_core/env';
@@ -229,5 +229,96 @@ export async function getTryOnHistory(userId: number, limit: number = 10) {
   } catch (error) {
     console.error("[Database] Failed to get try-on history:", error);
     return [];
+  }
+}
+
+/** Persist a final try-on state so completed gallery entries retain their result. */
+export async function updateTryOnHistory(
+  historyId: number,
+  update: Partial<Pick<InsertTryOnHistory, "resultImageUrl" | "resultImageKey" | "creditsDeducted" | "status" | "bubbleApiResponse">>,
+): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+  try {
+    await db.update(tryOnHistory).set({ ...update, completedAt: new Date() }).where(eq(tryOnHistory.id, historyId));
+    return true;
+  } catch (error) {
+    console.error("[Database] Failed to update try-on history:", error);
+    return false;
+  }
+}
+
+/** Return only the signed-in user's image history, with photo ownership checked in the join. */
+export async function getUserGallery(userId: number, limit: number = 60) {
+  const db = await getDb();
+  if (!db) return [];
+  try {
+    return await db
+      .select({
+        id: tryOnHistory.id,
+        photoId: tryOnHistory.photoId,
+        shirtStyle: tryOnHistory.shirtStyle,
+        status: tryOnHistory.status,
+        sourceImageUrl: userPhotos.photoUrl,
+        resultImageUrl: tryOnHistory.resultImageUrl,
+        createdAt: tryOnHistory.createdAt,
+        completedAt: tryOnHistory.completedAt,
+      })
+      .from(tryOnHistory)
+      .leftJoin(userPhotos, and(eq(userPhotos.id, tryOnHistory.photoId), eq(userPhotos.userId, tryOnHistory.userId)))
+      .where(eq(tryOnHistory.userId, userId))
+      .orderBy(desc(tryOnHistory.id))
+      .limit(Math.min(Math.max(limit, 1), 100));
+  } catch (error) {
+    console.error("[Database] Failed to get user gallery:", error);
+    return [];
+  }
+}
+
+/** Return the minimal profile fields needed by the restricted admin workspace. */
+export async function getAdminUsers(limit: number = 100) {
+  const db = await getDb();
+  if (!db) return [];
+  try {
+    return await db
+      .select({
+        id: users.id,
+        name: users.name,
+        email: users.email,
+        role: users.role,
+        credits: users.credits,
+        createdAt: users.createdAt,
+        lastSignedIn: users.lastSignedIn,
+      })
+      .from(users)
+      .orderBy(desc(users.lastSignedIn))
+      .limit(Math.min(Math.max(limit, 1), 250));
+  } catch (error) {
+    console.error("[Database] Failed to get admin user list:", error);
+    return [];
+  }
+}
+
+export async function getAdminUserProfile(userId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  try {
+    const profiles = await db
+      .select({
+        id: users.id,
+        name: users.name,
+        email: users.email,
+        role: users.role,
+        credits: users.credits,
+        createdAt: users.createdAt,
+        lastSignedIn: users.lastSignedIn,
+      })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    return profiles[0] ?? null;
+  } catch (error) {
+    console.error("[Database] Failed to get admin user profile:", error);
+    return null;
   }
 }

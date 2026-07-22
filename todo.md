@@ -119,3 +119,15 @@
 - [x] Add regression coverage for the selected-photo-not-found scenario
 - [x] Verify Try On Now exits finalizing state in the rendered dashboard for both timeout and provider failures
 - [x] Verify timeout and provider-failure messages are clear and both paths return the button to a retryable state
+
+## Unpublished Reliability, Privacy & Administration Enhancements
+- [x] Remove the application-level image-generation abort timer so a provider request can complete naturally
+- [x] Buffer signed source photos on the server and pass image bytes, rather than signed URLs, to the AI provider
+- [x] Replace raw provider and signed-URL error details with safe user-facing recovery messages and credit refunds
+- [x] Render a browser-local selected-photo preview immediately and show an accessible preview fallback if it fails
+- [x] Add a private authenticated gallery for each user's own uploaded and generated try-on images
+- [x] Add dedicated `/admin/login` credentials and a secure HTTP-only administrator session
+- [x] Add protected `/admin` user-directory, profile-detail, and per-user gallery review queries and UI
+- [x] Add automated no-timeout, source-buffering, privacy, gallery, and admin-session coverage
+- [x] Run the local type checker and complete automated suite after restoring the enhancements
+- [ ] Manually verify a real user upload preview, a completed gallery entry, and a credentialed admin login in the running preview

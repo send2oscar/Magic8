@@ -9,6 +9,10 @@ const mocks = vi.hoisted(() => ({
   getUserPhotos: vi.fn(),
   saveTryOnHistory: vi.fn(),
   getTryOnHistory: vi.fn(),
+  updateTryOnHistory: vi.fn(),
+  getUserGallery: vi.fn(),
+  getAdminUsers: vi.fn(),
+  getAdminUserProfile: vi.fn(),
   storagePut: vi.fn(),
   storageGetSignedUrl: vi.fn(),
   generateImage: vi.fn(),
@@ -22,6 +26,10 @@ vi.mock("./db", () => ({
   getUserPhotos: mocks.getUserPhotos,
   saveTryOnHistory: mocks.saveTryOnHistory,
   getTryOnHistory: mocks.getTryOnHistory,
+  updateTryOnHistory: mocks.updateTryOnHistory,
+  getUserGallery: mocks.getUserGallery,
+  getAdminUsers: mocks.getAdminUsers,
+  getAdminUserProfile: mocks.getAdminUserProfile,
 }));
 
 vi.mock("./storage", () => ({
@@ -72,6 +80,11 @@ function configureSuccessfulTryOn() {
     },
   ]);
   mocks.storageGetSignedUrl.mockResolvedValue("https://storage.example.test/photos/1/source.jpg?signature=test");
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+    ok: true,
+    arrayBuffer: async () => new Uint8Array([1, 2, 3, 4]).buffer,
+    headers: new Headers({ "content-type": "image/jpeg" }),
+  }));
   mocks.generateImage.mockResolvedValue({ url: "/manus-storage/generated/result.png" });
 }
 
@@ -158,7 +171,7 @@ describe("Try-On Flow", () => {
           photoId: 1,
           shirtStyle: "electric-cyan",
         }),
-      ).rejects.toThrow(/Failed to generate shirt try-on image/);
+      ).rejects.toThrow("We couldn't complete the AI try-on this time");
       expect(mocks.addCredits).toHaveBeenCalledWith(1, 1);
     });
 

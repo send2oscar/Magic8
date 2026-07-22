@@ -12,8 +12,9 @@ import { useAuth } from "@/_core/hooks/useAuth";
 const DEMO_PHOTO_URL = '/manus-storage/demo_person_31d5a68a.jpg';
 
 type SelectedPhoto = {
-  id: number;
+  id: number | null;
   url: string;
+  previewUrl: string;
 };
 
 export default function Dashboard() {
@@ -27,6 +28,8 @@ export default function Dashboard() {
   const [showResult, setShowResult] = useState(false);
   const [resultData, setResultData] = useState<any>(null);
   const tryOnInFlight = useRef(false);
+  const previewObjectUrl = useRef<string | null>(null);
+  const [previewFailed, setPreviewFailed] = useState(false);
 
   // tRPC queries and mutations
   const creditsQuery = trpc.credits.getBalance.useQuery();
@@ -47,6 +50,10 @@ export default function Dashboard() {
 
     return () => window.clearInterval(progressTimer);
   }, [isTryingOn]);
+
+  useEffect(() => () => {
+    if (previewObjectUrl.current && typeof URL.revokeObjectURL === "function") URL.revokeObjectURL(previewObjectUrl.current);
+  }, []);
 
   if (loading) {
     return (
@@ -88,12 +95,24 @@ export default function Dashboard() {
       return;
     }
 
+    if (previewObjectUrl.current && typeof URL.revokeObjectURL === "function") URL.revokeObjectURL(previewObjectUrl.current);
+    const localPreviewUrl = typeof URL.createObjectURL === "function" ? URL.createObjectURL(file) : "";
+    previewObjectUrl.current = localPreviewUrl || null;
+    setPreviewFailed(false);
+    // Render immediately from the browser's selected file. Storage remains the
+    // authenticated source of truth for Try On once upload completes.
+    setSelectedPhoto({ id: null, url: "", previewUrl: localPreviewUrl });
+
     setIsUploading(true);
     try {
       const arrayBuffer = await file.arrayBuffer();
       const uint8Array = new Uint8Array(arrayBuffer);
       const binaryString = Array.from(uint8Array).map(byte => String.fromCharCode(byte)).join('');
       const base64String = btoa(binaryString);
+      const previewUrl = localPreviewUrl || `data:${file.type || "image/jpeg"};base64,${base64String}`;
+      if (!localPreviewUrl) {
+        setSelectedPhoto({ id: null, url: "", previewUrl });
+      }
 
       // Get the JWT token from localStorage (set by the auth system)
       const token = localStorage.getItem('auth_token');
@@ -130,7 +149,7 @@ export default function Dashboard() {
         throw new Error("Your photo was uploaded, but could not be selected. Please try again.");
       }
 
-      setSelectedPhoto({ id: savedPhoto.id, url: savedPhoto.photoUrl });
+      setSelectedPhoto({ id: savedPhoto.id, url: savedPhoto.photoUrl, previewUrl });
       toast.success("Photo uploaded successfully!");
     } catch (error: any) {
       toast.error(error?.message || "Failed to upload photo");
@@ -141,7 +160,7 @@ export default function Dashboard() {
   };
 
   const handleTryOn = async () => {
-    if (!selectedPhoto || !selectedShirt) {
+    if (!selectedPhoto?.id || !selectedShirt) {
       toast.error("Upload a photo and select a shirt style before trying it on.");
       return;
     }
@@ -192,6 +211,13 @@ export default function Dashboard() {
               <p className="text-2xl font-bold neon-cyan">{creditsQuery.data?.balance || 0}</p>
             </div>
             <Button
+              onClick={() => setLocation("/gallery")}
+              className="px-4 py-2 bg-secondary text-background font-bold border-2 border-secondary flex items-center gap-2"
+            >
+              <Shirt className="w-4 h-4" />
+              GALLERY
+            </Button>
+            <Button
               onClick={handleLogout}
               className="px-4 py-2 bg-destructive text-destructive-foreground font-bold border-2 border-destructive flex items-center gap-2"
             >
@@ -213,8 +239,8 @@ export default function Dashboard() {
               <div className="border-2 border-dashed border-accent rounded p-8 text-center hover:border-secondary transition">
                 {selectedPhoto ? (
                   <div className="space-y-4">
-                    <img src={selectedPhoto.url} alt="Selected upload" className="w-full h-64 object-cover rounded" />
-                    <p className="text-sm text-muted-foreground">Photo selected</p>
+                    {previewFailed ? <div role="status" className="flex h-64 items-center justify-center rounded border border-destructive/60 bg-destructive/10 px-4 text-sm text-destructive">Preview unavailable. Choose the photo again to refresh it.</div> : <img src={selectedPhoto.previewUrl} alt="Selected upload" className="w-full h-64 object-cover rounded" onLoad={() => setPreviewFailed(false)} onError={() => setPreviewFailed(true)} />}
+                    <p className="text-sm text-muted-foreground">{selectedPhoto.id ? "Photo selected" : "Uploading selected photo..."}</p>
                   </div>
                 ) : (
                   <div className="space-y-4">

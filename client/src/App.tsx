@@ -6,6 +6,9 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import Home from "./pages/Home";
 import Dashboard from "./pages/Dashboard";
+import Gallery from "./pages/Gallery";
+import AdminLogin from "./pages/AdminLogin";
+import AdminPanel from "./pages/AdminPanel";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 
@@ -17,6 +20,9 @@ function Router() {
       <Route path={"/login"} component={Login} />
       <Route path={"/register"} component={Register} />
       <Route path={"/dashboard"} component={Dashboard} />
+      <Route path={"/gallery"} component={Gallery} />
+      <Route path={"/admin/login"} component={AdminLogin} />
+      <Route path={"/admin"} component={AdminPanel} />
       <Route path={"/404"} component={NotFound} />
       {/* Final fallback route */}
       <Route component={NotFound} />
