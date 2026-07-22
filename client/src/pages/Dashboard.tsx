@@ -1,4 +1,3 @@
-import { useAuth } from "@/_core/hooks/useAuth";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -7,8 +6,9 @@ import { trpc } from "@/lib/trpc";
 import { useState } from "react";
 import { Zap, Upload, LogOut, Shirt } from "lucide-react";
 import { toast } from "sonner";
+import { useAuth } from "@/_core/hooks/useAuth";
 
-const DEMO_PHOTO_URL = '/manus-storage/37218434_10205116407305634_1373258317643644928_n_869f9052.jpg';
+const DEMO_PHOTO_URL = '/manus-storage/demo_person_31d5a68a.jpg';
 
 export default function Dashboard() {
   const { user, logout, isAuthenticated, loading } = useAuth();
@@ -20,34 +20,35 @@ export default function Dashboard() {
   const [showResult, setShowResult] = useState(false);
   const [resultData, setResultData] = useState<any>(null);
 
-  const creditsQuery = trpc.credits.getBalance.useQuery(undefined, {
-    enabled: isAuthenticated,
-  });
-  const photosQuery = trpc.photos.list.useQuery(undefined, {
-    enabled: isAuthenticated,
-  });
-  const shirtsQuery = trpc.shirts.list.useQuery(undefined, {
-    enabled: isAuthenticated,
-  });
-  const uploadPhotoMutation = trpc.photos.upload.useMutation();
+  // tRPC queries and mutations
+  const creditsQuery = trpc.credits.getBalance.useQuery();
+  const photosQuery = trpc.photos.list.useQuery();
+  const shirtsQuery = trpc.shirts.list.useQuery();
+  const uploadMutation = trpc.photos.upload.useMutation();
   const tryOnMutation = trpc.tryOn.process.useMutation();
 
   if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
-          <div className="inline-block animate-spin mb-4">
-            <Zap className="w-8 h-8 text-accent" />
-          </div>
-          <p className="text-foreground neon-pink">INITIALIZING DASHBOARD...</p>
+          <div className="text-2xl font-bold neon-cyan mb-4">INITIALIZING...</div>
+          <div className="w-12 h-12 border-2 border-accent border-t-transparent rounded-full animate-spin mx-auto"></div>
         </div>
       </div>
     );
   }
 
   if (!isAuthenticated) {
-    setLocation("/");
-    return null;
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-2xl font-bold neon-pink mb-4">NOT AUTHENTICATED</div>
+          <Button onClick={() => setLocation("/")} className="bg-accent text-background">
+            RETURN HOME
+          </Button>
+        </div>
+      </div>
+    );
   }
 
   const handleLogout = async () => {
@@ -58,12 +59,10 @@ export default function Dashboard() {
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) {
-      // If no file selected, keep the demo photo
       setSelectedPhoto(DEMO_PHOTO_URL);
       return;
     }
 
-    // Validate file size (max 5MB)
     if (file.size > 5 * 1024 * 1024) {
       toast.error('File too large. Maximum size is 5MB.');
       return;
@@ -71,43 +70,46 @@ export default function Dashboard() {
 
     setIsUploading(true);
     try {
-      // Convert file to base64 string for transmission
-      const reader = new FileReader();
-      const base64Data = await new Promise<string>((resolve, reject) => {
-        reader.onload = () => {
-          const result = reader.result as string;
-          const base64 = result.split(',')[1] || result;
-          resolve(base64);
-        };
-        reader.onerror = reject;
-      });
+      const arrayBuffer = await file.arrayBuffer();
+      const uint8Array = new Uint8Array(arrayBuffer);
+      const binaryString = Array.from(uint8Array).map(byte => String.fromCharCode(byte)).join('');
+      const base64String = btoa(binaryString);
+
+      // Get the JWT token from localStorage (set by the auth system)
+      const token = localStorage.getItem('auth_token');
       
-      reader.readAsDataURL(file);
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
       
-      // Use direct /api/upload endpoint instead of tRPC
+      // Add Authorization header if token exists
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      
       const response = await fetch('/api/upload', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers,
+        credentials: 'include',
         body: JSON.stringify({
-          file: base64Data,
+          file: base64String,
           filename: file.name,
         }),
       });
-      
+    
+
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Upload failed');
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Upload failed with status ${response.status}`);
       }
-      
+
       const result = await response.json();
       setSelectedPhoto(result.photoUrl);
       toast.success("Photo uploaded successfully!");
       photosQuery.refetch();
-    } catch (error) {
-      toast.error("Failed to upload photo");
-      console.error(error);
+    } catch (error: any) {
+      toast.error(error?.message || "Failed to upload photo");
+      console.error('Upload error:', error);
     } finally {
       setIsUploading(false);
     }
@@ -137,8 +139,7 @@ export default function Dashboard() {
 
       toast.success("Try-on completed!");
       creditsQuery.refetch();
-      
-      // Show result modal
+
       setResultData(result);
       setShowResult(true);
     } catch (error: any) {
@@ -151,52 +152,8 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Result Modal */}
-      <Dialog open={showResult} onOpenChange={setShowResult}>
-        <DialogContent className="max-w-2xl bg-card border-2 border-accent">
-          <DialogHeader>
-            <DialogTitle className="text-2xl font-bold neon-pink">TRY-ON RESULT</DialogTitle>
-          </DialogHeader>
-          
-          {resultData && (
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <p className="text-sm text-muted-foreground">SHIRT APPLIED:</p>
-                <p className="text-xl font-bold neon-cyan">{resultData.shirtApplied || 'Unknown'}</p>
-              </div>
-              
-              <div className="border-2 border-accent rounded overflow-hidden">
-                <img 
-                  src={resultData.resultImageUrl} 
-                  alt="Try-on result" 
-                  className="w-full h-auto"
-                />
-              </div>
-              
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <p className="text-muted-foreground">CREDITS REMAINING</p>
-                  <p className="text-2xl font-bold neon-cyan">{resultData.creditsRemaining}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">CREDITS USED</p>
-                  <p className="text-2xl font-bold neon-pink">1</p>
-                </div>
-              </div>
-              
-              <Button
-                onClick={() => setShowResult(false)}
-                className="w-full px-6 py-3 bg-secondary text-background font-bold border-2 border-secondary"
-              >
-                CLOSE
-              </Button>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
-
       {/* Header */}
-      <div className="border-b-2 border-accent bg-card/50 backdrop-blur sticky top-0 z-50">
+      <div className="border-b-2 border-accent/30 bg-background/50 backdrop-blur sticky top-0 z-40">
         <div className="container py-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Zap className="w-6 h-6 text-accent" />
@@ -225,7 +182,7 @@ export default function Dashboard() {
           <Card className="hud-frame bg-card/50 backdrop-blur">
             <div className="space-y-6">
               <h2 className="text-2xl font-bold neon-pink">UPLOAD PHOTO</h2>
-              
+
               <div className="border-2 border-dashed border-accent rounded p-8 text-center hover:border-secondary transition">
                 {selectedPhoto ? (
                   <div className="space-y-4">
@@ -270,7 +227,7 @@ export default function Dashboard() {
             <Card className="hud-frame bg-card/50 backdrop-blur">
               <div className="space-y-4">
                 <h2 className="text-2xl font-bold neon-cyan">SELECT SHIRT</h2>
-                
+
                 <div className="grid grid-cols-2 gap-3">
                   {shirtsQuery.data?.map((shirt) => (
                     <button
@@ -278,12 +235,12 @@ export default function Dashboard() {
                       onClick={() => setSelectedShirt(shirt.id)}
                       className={`p-4 rounded border-2 transition text-center ${
                         selectedShirt === shirt.id
-                          ? "border-secondary bg-secondary/10"
-                          : "border-accent hover:border-secondary"
+                          ? "border-secondary bg-secondary/20"
+                          : "border-accent/50 hover:border-accent"
                       }`}
                     >
-                      <Shirt className="w-6 h-6 mx-auto mb-2" />
-                      <p className="text-sm font-mono">{shirt.name}</p>
+                      <Shirt className="w-6 h-6 mx-auto mb-2" style={{ color: shirt.color }} />
+                      <p className="text-sm font-bold">{shirt.name}</p>
                     </button>
                   ))}
                 </div>
@@ -293,30 +250,69 @@ export default function Dashboard() {
             {/* Try-On Button */}
             <Card className="hud-frame bg-card/50 backdrop-blur">
               <div className="space-y-4">
-                <h2 className="text-2xl font-bold neon-pink">TRY-ON</h2>
-                
-                <div className="space-y-3 text-sm text-muted-foreground">
-                  <p>✓ Photo selected: {selectedPhoto ? "YES" : "NO"}</p>
-                  <p>✓ Shirt selected: {selectedShirt ? "YES" : "NO"}</p>
-                  <p>✓ Credits available: {creditsQuery.data?.balance || 0}</p>
-                </div>
-
+                <h2 className="text-2xl font-bold neon-pink">TRY ON</h2>
                 <Button
                   onClick={handleTryOn}
-                  disabled={!selectedPhoto || !selectedShirt || isTryingOn || (creditsQuery.data?.balance || 0) < 1}
-                  className="w-full px-6 py-3 bg-accent text-accent-foreground font-bold border-2 border-accent disabled:opacity-50"
+                  disabled={isTryingOn || !selectedPhoto || !selectedShirt}
+                  className="w-full px-6 py-4 bg-accent text-background font-bold border-2 border-accent text-lg"
                 >
                   {isTryingOn ? "PROCESSING..." : "TRY ON NOW"}
                 </Button>
-
-                {(creditsQuery.data?.balance || 0) < 1 && (
-                  <p className="text-destructive text-center font-bold">NO CREDITS AVAILABLE</p>
-                )}
               </div>
             </Card>
           </div>
         </div>
       </div>
+
+      {/* Result Modal */}
+      <Dialog open={showResult} onOpenChange={setShowResult}>
+        <DialogContent className="max-w-2xl bg-card border-2 border-accent">
+          <DialogHeader>
+            <DialogTitle className="text-2xl font-bold neon-cyan">TRY-ON RESULT</DialogTitle>
+          </DialogHeader>
+
+          {resultData && (
+            <div className="space-y-6">
+              <div className="rounded overflow-hidden border-2 border-accent">
+                <img
+                  src={resultData.resultImageUrl}
+                  alt="Try-on result"
+                  className="w-full h-auto"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-background/50 p-4 rounded border-2 border-accent/30">
+                  <p className="text-xs text-muted-foreground mb-2">SHIRT APPLIED</p>
+                  <p className="text-lg font-bold neon-pink">{resultData.shirtApplied}</p>
+                </div>
+
+                <div className="bg-background/50 p-4 rounded border-2 border-accent/30">
+                  <p className="text-xs text-muted-foreground mb-2">CREDITS USED</p>
+                  <p className="text-lg font-bold neon-cyan">1</p>
+                </div>
+
+                <div className="bg-background/50 p-4 rounded border-2 border-accent/30">
+                  <p className="text-xs text-muted-foreground mb-2">CREDITS REMAINING</p>
+                  <p className="text-lg font-bold neon-cyan">{resultData.creditsRemaining}</p>
+                </div>
+
+                <div className="bg-background/50 p-4 rounded border-2 border-accent/30">
+                  <p className="text-xs text-muted-foreground mb-2">STATUS</p>
+                  <p className="text-lg font-bold text-green-400">SUCCESS</p>
+                </div>
+              </div>
+
+              <Button
+                onClick={() => setShowResult(false)}
+                className="w-full px-6 py-3 bg-secondary text-background font-bold border-2 border-secondary"
+              >
+                CLOSE
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
