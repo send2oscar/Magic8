@@ -66,7 +66,7 @@
 - [x] File upload with S3 integration (basic implementation complete)
 - [x] Make try-on credit deduction transactional with rollback on failure
 - [x] Persist try-on result image URL and API response to database
-- [ ] Add dedicated Login and Register pages/routes
+- [x] Add dedicated Login and Register pages/routes (using Manus OAuth)
 - [x] Replace monospace font with geometric sans-serif (Orbitron)
 - [x] Implement HUD corner bracket styling in CSS
 - [x] Add automated tests for 5-credit new-user assignment
@@ -105,3 +105,4 @@
 ## Deployment
 - [x] Create final checkpoint with AI image generation
 - [x] Verify all features working in production
+- [x] Fix photo upload authentication with JWT token in Authorization header
