@@ -272,12 +272,12 @@ export default function Dashboard() {
             <div className="space-y-6">
               <h2 className="text-2xl font-bold neon-pink">UPLOAD PHOTO</h2>
 
-              <div className="border-2 border-dashed border-accent rounded p-8 text-center hover:border-secondary transition">
+              <div className="border-2 border-dashed border-accent rounded p-4 text-center transition hover:border-secondary sm:p-8">
                 {selectedPhoto ? (
                   <div className="space-y-4">
-                    <div className="w-[500px] h-[500px] flex items-center justify-center border border-accent/50 rounded overflow-hidden mx-auto">
+                    <div className="mx-auto flex aspect-square w-full max-w-[500px] items-center justify-center overflow-hidden rounded border border-accent/50 bg-background/40">
                       {selectedPhoto.previewUrl && !previewFailed ? (
-                        <img src={selectedPhoto.previewUrl} alt="Selected upload" className="w-full h-full object-cover" onLoad={() => setPreviewFailed(false)} onError={() => setPreviewFailed(true)} />
+                        <img src={selectedPhoto.previewUrl} alt="Selected upload" className="block h-full w-full object-contain" onLoad={() => setPreviewFailed(false)} onError={() => setPreviewFailed(true)} />
                       ) : (
                         <div role="status" className="px-4 text-sm text-destructive">Preview unavailable. Choose the photo again to refresh it.</div>
                       )}
@@ -286,8 +286,8 @@ export default function Dashboard() {
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    <div className="w-[500px] h-[500px] flex items-center justify-center border border-accent/50 rounded overflow-hidden mx-auto">
-                      <img src={DEMO_PHOTO_URL} alt="Demo preview" className="w-full h-full object-cover opacity-70" />
+                    <div className="mx-auto flex aspect-square w-full max-w-[500px] items-center justify-center overflow-hidden rounded border border-accent/50 bg-background/40">
+                      <img src={DEMO_PHOTO_URL} alt="Demo preview" className="block h-full w-full object-contain opacity-70" />
                     </div>
                     <p className="text-foreground">Upload a photo to enable try-on</p>
                     <p className="text-xs text-muted-foreground">Demo preview only · PNG, JPG, or WebP up to 5MB</p>
@@ -373,9 +373,34 @@ export default function Dashboard() {
                   <span
                     className="relative z-10"
                   >
-                    {isTryingOn ? `${getTryOnProgressLabel(tryOnProgress)}: ${tryOnProgress}% complete` : "TRY ON NOW"}
+                    {isTryingOn ? `${getTryOnProgressLabel(tryOnProgress)} • ${tryOnProgress}%` : "TRY ON NOW"}
                   </span>
                 </Button>
+                {isTryingOn && (
+                  <div className="space-y-4 rounded border border-accent/40 bg-background/40 p-4" aria-live="polite">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-bold neon-cyan">LIVE TASK LOG</p>
+                      <p className="text-xs text-muted-foreground">{elapsedSeconds}s elapsed</p>
+                    </div>
+                    <ol className="space-y-2 text-sm">
+                      {liveTaskStages.map((stage) => (
+                        <li key={`${stage.key}-${stage.timestamp}`} className="flex items-start gap-2">
+                          <span aria-hidden="true" className={stage.state === "completed" ? "text-secondary" : stage.state === "error" ? "text-destructive" : "text-accent"}>
+                            {stage.state === "completed" ? "✓" : stage.state === "error" ? "!" : "•"}
+                          </span>
+                          <span className={stage.state === "error" ? "text-destructive" : stage.state === "active" ? "text-foreground" : "text-muted-foreground"}>
+                            {stage.label}{stage.detail ? ` — ${stage.detail}` : ""}
+                          </span>
+                        </li>
+                      ))}
+                    </ol>
+                    <p className="text-xs text-muted-foreground">
+                      {tryOnProgress >= 92
+                        ? "The AI provider is still working. This request will remain open until it returns a result or a safe failure."
+                        : "Preparing your edit. The current server-confirmed stage appears above."}
+                    </p>
+                  </div>
+                )}
               </div>
             </Card>
           </div>

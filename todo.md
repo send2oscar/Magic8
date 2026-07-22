@@ -164,5 +164,9 @@
 - [x] Fix preview photo to show full fixed dimension (e.g., 500x500px) and resize large images
 - [x] Add "XXX (Coming Soon)" shirt style to the selection UI
 
-- [ ] Update the upload preview to use a truly fixed-size container (matching the intended dimensions across resize) and verify it remains stable when the browser width changes.
+- [x] Update the upload preview to use a consistent 500px-maximum square viewport that scales down only on narrow screens without overflow, and verify it remains stable when the browser width changes.
 - [ ] Add real oversized-image handling for preview/upload (e.g. canvas/client-side resize or another implemented size-normalization path) and regression coverage for portrait images filling the fixed preview without cropping.
+- [x] Repair the responsive upload preview so portrait and landscape photos preserve their native aspect ratio, remain fully contained, and never overflow the bordered viewport.
+- [x] Run type checking, automated tests, and desktop/mobile visual verification for the release candidate.
+- [x] Save a release-ready checkpoint for publication.
+- [x] Restore the Dashboard live task-log rendering required by existing Try On lifecycle tests before release.
