@@ -2,18 +2,23 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { trpc } from "@/lib/trpc";
 import { useState } from "react";
 import { Zap, Upload, LogOut, Shirt } from "lucide-react";
 import { toast } from "sonner";
 
+const DEMO_PHOTO_URL = '/manus-storage/37218434_10205116407305634_1373258317643644928_n_869f9052.jpg';
+
 export default function Dashboard() {
   const { user, logout, isAuthenticated, loading } = useAuth();
   const [, setLocation] = useLocation();
-  const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
+  const [selectedPhoto, setSelectedPhoto] = useState<string | null>(DEMO_PHOTO_URL);
   const [selectedShirt, setSelectedShirt] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isTryingOn, setIsTryingOn] = useState(false);
+  const [showResult, setShowResult] = useState(false);
+  const [resultData, setResultData] = useState<any>(null);
 
   const creditsQuery = trpc.credits.getBalance.useQuery(undefined, {
     enabled: isAuthenticated,
@@ -52,14 +57,51 @@ export default function Dashboard() {
 
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (!file) {
+      // If no file selected, keep the demo photo
+      setSelectedPhoto(DEMO_PHOTO_URL);
+      return;
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('File too large. Maximum size is 5MB.');
+      return;
+    }
 
     setIsUploading(true);
     try {
-      const result = await uploadPhotoMutation.mutateAsync({
-        file: file,
-        filename: file.name,
+      // Convert file to base64 string for transmission
+      const reader = new FileReader();
+      const base64Data = await new Promise<string>((resolve, reject) => {
+        reader.onload = () => {
+          const result = reader.result as string;
+          const base64 = result.split(',')[1] || result;
+          resolve(base64);
+        };
+        reader.onerror = reject;
       });
+      
+      reader.readAsDataURL(file);
+      
+      // Use direct /api/upload endpoint instead of tRPC
+      const response = await fetch('/api/upload', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          file: base64Data,
+          filename: file.name,
+        }),
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Upload failed');
+      }
+      
+      const result = await response.json();
       setSelectedPhoto(result.photoUrl);
       toast.success("Photo uploaded successfully!");
       photosQuery.refetch();
@@ -96,10 +138,9 @@ export default function Dashboard() {
       toast.success("Try-on completed!");
       creditsQuery.refetch();
       
-      // Show result image
-      if (result.resultImageUrl) {
-        setSelectedPhoto(result.resultImageUrl);
-      }
+      // Show result modal
+      setResultData(result);
+      setShowResult(true);
     } catch (error: any) {
       toast.error(error?.message || "Failed to process try-on");
       console.error(error);
@@ -110,6 +151,50 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-background">
+      {/* Result Modal */}
+      <Dialog open={showResult} onOpenChange={setShowResult}>
+        <DialogContent className="max-w-2xl bg-card border-2 border-accent">
+          <DialogHeader>
+            <DialogTitle className="text-2xl font-bold neon-pink">TRY-ON RESULT</DialogTitle>
+          </DialogHeader>
+          
+          {resultData && (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <p className="text-sm text-muted-foreground">SHIRT APPLIED:</p>
+                <p className="text-xl font-bold neon-cyan">{resultData.shirtApplied || 'Unknown'}</p>
+              </div>
+              
+              <div className="border-2 border-accent rounded overflow-hidden">
+                <img 
+                  src={resultData.resultImageUrl} 
+                  alt="Try-on result" 
+                  className="w-full h-auto"
+                />
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <p className="text-muted-foreground">CREDITS REMAINING</p>
+                  <p className="text-2xl font-bold neon-cyan">{resultData.creditsRemaining}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">CREDITS USED</p>
+                  <p className="text-2xl font-bold neon-pink">1</p>
+                </div>
+              </div>
+              
+              <Button
+                onClick={() => setShowResult(false)}
+                className="w-full px-6 py-3 bg-secondary text-background font-bold border-2 border-secondary"
+              >
+                CLOSE
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
       {/* Header */}
       <div className="border-b-2 border-accent bg-card/50 backdrop-blur sticky top-0 z-50">
         <div className="container py-4 flex items-center justify-between">

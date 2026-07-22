@@ -13,6 +13,7 @@ import {
   getTryOnHistory,
 } from "./db";
 import { storagePut, storageGet } from "./storage";
+import { generateImage } from "./_core/imageGeneration";
 
 // Shirt styles available for try-on
 const SHIRT_STYLES = [
@@ -49,22 +50,67 @@ export const appRouter = router({
     upload: protectedProcedure
       .input(
         z.object({
-          file: z.instanceof(Blob),
+          file: z.any(), // Accept any file-like object
           filename: z.string(),
         })
       )
       .mutation(async ({ ctx, input }) => {
         try {
-          // Convert Blob to Buffer
-          const arrayBuffer = await input.file.arrayBuffer();
-          const buffer = Buffer.from(arrayBuffer);
+          const startTime = Date.now();
+          console.log('[Upload] Starting file upload for user:', ctx.user.id);
+          console.log('[Upload] File received:', typeof input.file, input.file?.constructor?.name, 'Size:', input.file?.length || 'unknown');
+          
+          // Handle both Blob and File objects
+          let buffer: Buffer;
+          
+          if (input.file instanceof Blob || input.file instanceof File) {
+            const arrayBuffer = await input.file.arrayBuffer();
+            buffer = Buffer.from(arrayBuffer);
+          } else if (typeof input.file === 'string') {
+            // Handle base64 string
+            buffer = Buffer.from(input.file, 'base64');
+          } else if (Buffer.isBuffer(input.file)) {
+            buffer = input.file;
+          } else if (input.file instanceof Uint8Array) {
+            buffer = Buffer.from(input.file);
+          } else if (Array.isArray(input.file)) {
+            // Handle array of bytes
+            buffer = Buffer.from(input.file);
+          } else if (typeof input.file === 'object' && input.file !== null) {
+            // Handle object with data property
+            if (input.file.data) {
+              buffer = Buffer.from(input.file.data);
+            } else {
+              throw new Error('Invalid file format: no data property');
+            }
+          } else {
+            throw new Error('Invalid file format: ' + typeof input.file);
+          }
 
+          console.log('[Upload] Buffer created, size:', buffer.length, 'bytes');
+          
           // Upload to S3
+          console.log('[Upload] Starting S3 upload...');
+          let mimeType = 'application/octet-stream';
+          if (input.file instanceof Blob || input.file instanceof File) {
+            mimeType = input.file.type || 'application/octet-stream';
+          } else if (input.filename.endsWith('.jpg') || input.filename.endsWith('.jpeg')) {
+            mimeType = 'image/jpeg';
+          } else if (input.filename.endsWith('.png')) {
+            mimeType = 'image/png';
+          } else if (input.filename.endsWith('.gif')) {
+            mimeType = 'image/gif';
+          } else if (input.filename.endsWith('.webp')) {
+            mimeType = 'image/webp';
+          }
+          
           const result = await storagePut(
             `photos/${ctx.user.id}/${Date.now()}-${input.filename}`,
             buffer,
-            input.file.type
+            mimeType
           );
+          const s3Time = Date.now() - startTime;
+          console.log('[Upload] S3 upload complete. Time:', s3Time, 'ms, URL:', result?.url);
 
           if (!result) {
             throw new TRPCError({
@@ -153,44 +199,58 @@ export const appRouter = router({
             });
           }
 
-          // Call Bubble.io Workflow API
-          const bubbleApiUrl = "https://magic8-78745.bubbleapps.io/version-test/api/1.1/wf/shirt_tryon";
-          const bubbleToken = "e2bb203ef7d383766f3d0f4e6d09a77a";
-
-          const bubblePayload = {
-            photo_url: input.photoUrl,
-            shirt_style: input.shirtStyle,
-          };
-
+          // Generate shirt try-on image using AI image generation
           try {
-            const bubbleResponse = await fetch(bubbleApiUrl, {
-              method: "POST",
-              headers: {
-                "Authorization": `Bearer ${bubbleToken}`,
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify(bubblePayload),
-            });
-
-            const bubbleData = await bubbleResponse.json();
-
-            // Store the API response for debugging
-            if (bubbleData && bubbleData.result && bubbleData.result.image_url) {
-              // Update try-on history with result
-              // Note: In a real scenario, you'd update the record with the result
-              return {
-                success: true,
-                resultImageUrl: bubbleData.result.image_url,
-                creditsRemaining: balance - 1,
-              };
-            } else {
-              throw new Error("Invalid response from Bubble.io API");
+            const shirtInfo = SHIRT_STYLES.find(s => s.id === input.shirtStyle);
+            if (!shirtInfo) {
+              throw new Error("Invalid shirt style");
             }
-          } catch (bubbleError) {
-            console.error("Bubble.io API error:", bubbleError);
+
+            // Create a detailed prompt for AI image generation
+            const prompt = `You are an expert fashion photo editor. Take this photo and realistically edit the person's shirt to be a ${shirtInfo.name} shirt with color ${shirtInfo.color}. 
+            
+Instructions:
+- Only change the shirt/top clothing item
+- Keep the person's face, body pose, arms, and background exactly the same
+- Make the shirt look natural and realistic with proper lighting and shadows
+- Ensure the shirt fits the person's body naturally
+- Maintain the same photo quality and style as the original
+- Do not change anything else in the image
+
+The new shirt should be ${shirtInfo.name} with a ${shirtInfo.color} color.`;
+
+            console.log("[Shirt Try-On] Processing shirt change for:", shirtInfo.name);
+            console.log("[Shirt Try-On] Using AI image generation to create realistic shirt change");
+            
+            // Call the Manus image generation API with the original image for editing
+            const result = await generateImage({
+              prompt: prompt,
+              originalImages: [
+                {
+                  url: input.photoUrl,
+                  mimeType: "image/jpeg",
+                }
+              ],
+              model: "MODEL_GPT_IMAGE_2",
+              quality: "high",
+            });
+            
+            if (!result.url) {
+              throw new Error("Image generation did not return a URL");
+            }
+            
+            console.log("[Shirt Try-On] Success! Generated image URL:", result.url);
+            return {
+              success: true,
+              resultImageUrl: result.url,
+              creditsRemaining: balance - 1,
+              shirtApplied: shirtInfo.name,
+            }
+          } catch (genError) {
+            console.error("Image generation error:", genError);
             throw new TRPCError({
               code: "INTERNAL_SERVER_ERROR",
-              message: "Failed to process shirt try-on with Bubble.io API",
+              message: `Failed to generate shirt try-on image: ${genError instanceof Error ? genError.message : 'Unknown error'}`,
             });
           }
         } catch (error) {

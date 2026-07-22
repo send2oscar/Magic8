@@ -8,6 +8,7 @@ import { registerStorageProxy } from "./storageProxy";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
+import { sdk } from "./sdk";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -36,6 +37,67 @@ async function startServer() {
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
   registerStorageProxy(app);
   registerOAuthRoutes(app);
+  
+  // Direct file upload endpoint (bypasses tRPC serialization limits)
+  app.post('/api/upload', async (req, res) => {
+    try {
+      // Use SDK authentication to get user
+      let user;
+      try {
+        user = await sdk.authenticateRequest(req);
+      } catch (error) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+      
+      if (!user) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+      
+      const { file: base64Data, filename } = req.body;
+      if (!base64Data || !filename) {
+        return res.status(400).json({ error: 'Missing file or filename' });
+      }
+      
+      const buffer = Buffer.from(base64Data, 'base64');
+      
+      let mimeType = 'application/octet-stream';
+      if (filename.endsWith('.jpg') || filename.endsWith('.jpeg')) {
+        mimeType = 'image/jpeg';
+      } else if (filename.endsWith('.png')) {
+        mimeType = 'image/png';
+      } else if (filename.endsWith('.gif')) {
+        mimeType = 'image/gif';
+      } else if (filename.endsWith('.webp')) {
+        mimeType = 'image/webp';
+      }
+      
+      const { storagePut } = await import('../storage');
+      const { saveUserPhoto } = await import('../db');
+      
+      const photoKey = `photos/${user.id}/${Date.now()}-${filename}`;
+      const result = await storagePut(photoKey, buffer, mimeType);
+      
+      if (!result) {
+        return res.status(500).json({ error: 'Failed to upload to storage' });
+      }
+      
+      await saveUserPhoto({
+        userId: user.id,
+        photoUrl: result.url,
+        photoKey: result.key,
+      });
+      
+      res.json({
+        success: true,
+        photoUrl: result.url,
+        photoKey: result.key,
+      });
+    } catch (error) {
+      console.error('[Upload] Error:', error);
+      res.status(500).json({ error: 'Upload failed' });
+    }
+  });
+  
   // tRPC API
   app.use(
     "/api/trpc",
