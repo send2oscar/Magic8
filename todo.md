@@ -154,3 +154,15 @@
 - [x] Stream the relay image from private storage without exposing its upstream signed URL or raw provider errors
 - [x] Add signed-relay and Try On contract regression coverage; verify TypeScript and all 37 automated tests pass
 - [ ] Run one authenticated production Try On to confirm the provider can fetch the signed application relay and save a completed gallery result
+- [ ] Diagnose and fix the newly reported production Try On failure after an uploaded photo is submitted through the signed source-image relay
+- [x] Verify the production signed source-image relay returns the uploaded image successfully (HTTP 200 image/jpeg)
+- [x] Capture the safe provider failure classification for the reported retry: HTTP 400 `failed_precondition` due to image-generation usage exhaustion
+
+## Versioning & UI Enhancements
+- [x] Implement version management system with `versions.json`
+- [x] Display current version number at the bottom of the webpage
+- [x] Fix preview photo to show full fixed dimension (e.g., 500x500px) and resize large images
+- [x] Add "XXX (Coming Soon)" shirt style to the selection UI
+
+- [ ] Update the upload preview to use a truly fixed-size container (matching the intended dimensions across resize) and verify it remains stable when the browser width changes.
+- [ ] Add real oversized-image handling for preview/upload (e.g. canvas/client-side resize or another implemented size-normalization path) and regression coverage for portrait images filling the fixed preview without cropping.

@@ -4,6 +4,8 @@ import NotFound from "@/pages/NotFound";
 import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
+import React, { useState, useEffect } from 'react';
+
 import Home from "./pages/Home";
 import Dashboard from "./pages/Dashboard";
 import Gallery from "./pages/Gallery";
@@ -36,6 +38,19 @@ function Router() {
 // - If you want to make theme switchable, pass `switchable` ThemeProvider and use `useTheme` hook
 
 function App() {
+  const [versionInfo, setVersionInfo] = useState<{ version: number; checkpointId: string } | null>(null);
+
+  useEffect(() => {
+    fetch('/versions.json')
+      .then(response => response.json())
+      .then(data => {
+        if (Array.isArray(data) && data.length > 0) {
+          setVersionInfo(data[data.length - 1]);
+        }
+      })
+      .catch(error => console.error('Failed to load version info:', error));
+  }, []);
+
   return (
     <ErrorBoundary>
       <ThemeProvider
@@ -46,6 +61,11 @@ function App() {
           <Toaster />
           <Router />
         </TooltipProvider>
+        {versionInfo && (
+          <footer className="text-center text-xs text-gray-500 py-4">
+            Version: {versionInfo.version} ({versionInfo.checkpointId.substring(0, 7)})
+          </footer>
+        )}
       </ThemeProvider>
     </ErrorBoundary>
   );

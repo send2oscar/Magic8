@@ -275,12 +275,20 @@ export default function Dashboard() {
               <div className="border-2 border-dashed border-accent rounded p-8 text-center hover:border-secondary transition">
                 {selectedPhoto ? (
                   <div className="space-y-4">
-                    {previewFailed ? <div role="status" className="flex h-64 items-center justify-center rounded border border-destructive/60 bg-destructive/10 px-4 text-sm text-destructive">Preview unavailable. Choose the photo again to refresh it.</div> : <img src={selectedPhoto.previewUrl} alt="Selected upload" className="w-full h-64 object-cover rounded" onLoad={() => setPreviewFailed(false)} onError={() => setPreviewFailed(true)} />}
+                    <div className="w-full h-64 flex items-center justify-center border border-accent/50 rounded overflow-hidden">
+                      {previewFailed ? (
+                        <div role="status" className="px-4 text-sm text-destructive">Preview unavailable. Choose the photo again to refresh it.</div>
+                      ) : (
+                        <img src={selectedPhoto.previewUrl} alt="Selected upload" className="max-w-full max-h-full object-contain" onLoad={() => setPreviewFailed(false)} onError={() => setPreviewFailed(true)} />
+                      )}
+                    </div>
                     <p className="text-sm text-muted-foreground">{selectedPhoto.id ? "Photo selected" : "Uploading selected photo..."}</p>
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    <img src={DEMO_PHOTO_URL} alt="Demo preview" className="w-full h-64 object-cover rounded opacity-70" />
+                    <div className="w-full h-64 flex items-center justify-center border border-accent/50 rounded overflow-hidden">
+                      <img src={DEMO_PHOTO_URL} alt="Demo preview" className="max-w-full max-h-full object-contain opacity-70" />
+                    </div>
                     <p className="text-foreground">Upload a photo to enable try-on</p>
                     <p className="text-xs text-muted-foreground">Demo preview only · PNG, JPG, or WebP up to 5MB</p>
                   </div>
@@ -332,6 +340,14 @@ export default function Dashboard() {
                       <p className="text-sm font-bold">{shirt.name}</p>
                     </button>
                   ))}
+                  <button
+                    key="coming-soon"
+                    disabled
+                    className="p-4 rounded border-2 transition text-center border-gray-700 text-gray-500 cursor-not-allowed"
+                  >
+                    <Shirt className="w-6 h-6 mx-auto mb-2" />
+                    <p className="text-sm font-bold">XXX (Coming Soon)</p>
+                  </button>
                 </div>
               </div>
             </Card>

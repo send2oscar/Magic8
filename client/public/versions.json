@@ -1,0 +1,8 @@
+[
+  {
+    "version": 1,
+    "checkpointId": "0be22141",
+    "timestamp": "2026-07-22T11:22:21Z",
+    "description": "修復 AI Try On 的來源圖片契約：移除會被 ImageService 拒絕的 inline Base64 圖片，改為五分鐘有效的 HMAC 簽名應用程式中繼 URL。中繼端點會從私有儲存空間串流影像、不暴露上游簽名 URL，並保留安全錯誤訊息及信用退款機制。移除過時的 Base64 緩衝路徑，新增中繼 URL 與 Try On 契約回歸測試；TypeScript 與 37 項測試全部通過。"
+  }
+]
