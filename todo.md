@@ -106,3 +106,7 @@
 - [x] Create final checkpoint with AI image generation
 - [x] Verify all features working in production
 - [x] Fix photo upload authentication with JWT token in Authorization header
+- [ ] Fix production try-on image generation when uploaded photo URLs are relative `/manus-storage` paths
+- [ ] Verify the complete production Try On Now flow returns an AI-generated result
+- [x] Replace localhost URL construction with a storage-backed public HTTPS image URL for GPT Image editing
+- [x] Add regression coverage for relative uploaded-photo URLs passed to the try-on procedure

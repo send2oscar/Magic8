@@ -7,12 +7,13 @@ import { TRPCError } from "@trpc/server";
 import {
   getUserCredits,
   deductCredits,
+  addCredits,
   saveUserPhoto,
   getUserPhotos,
   saveTryOnHistory,
   getTryOnHistory,
 } from "./db";
-import { storagePut, storageGet } from "./storage";
+import { storagePut, storageGetSignedUrl } from "./storage";
 import { generateImage } from "./_core/imageGeneration";
 
 // Shirt styles available for try-on
@@ -23,6 +24,22 @@ const SHIRT_STYLES = [
   { id: "dark-black", name: "Dark Black", color: "#0A0E27" },
   { id: "holographic", name: "Holographic", color: "#FF00FF" },
 ];
+
+function getImageMimeType(fileKey: string): string {
+  const extension = fileKey.split(".").pop()?.toLowerCase();
+  switch (extension) {
+    case "png":
+      return "image/png";
+    case "webp":
+      return "image/webp";
+    case "gif":
+      return "image/gif";
+    case "jpg":
+    case "jpeg":
+    default:
+      return "image/jpeg";
+  }
+}
 
 export const appRouter = router({
   system: systemRouter,
@@ -164,6 +181,7 @@ export const appRouter = router({
         })
       )
       .mutation(async ({ ctx, input }) => {
+        let creditsDeducted = false;
         try {
           // Check if user has enough credits
           const balance = await getUserCredits(ctx.user.id);
@@ -198,6 +216,7 @@ export const appRouter = router({
               message: "Failed to deduct credits",
             });
           }
+          creditsDeducted = true;
 
           // Generate shirt try-on image using AI image generation
           try {
@@ -222,24 +241,33 @@ The new shirt should be ${shirtInfo.name} with a ${shirtInfo.color} color.`;
             console.log("[Shirt Try-On] Processing shirt change for:", shirtInfo.name);
             console.log("[Shirt Try-On] Using AI image generation to create realistic shirt change");
             
-            // Convert relative URL to absolute URL if needed
-            let photoUrl = input.photoUrl;
-            if (photoUrl.startsWith('/')) {
-              // Get the current request host from context or use environment variable
-              const protocol = 'https';
-              const host = process.env.VITE_APP_DOMAIN || 'localhost:3000';
-              photoUrl = `${protocol}://${host}${photoUrl}`;
+            // Never pass the browser-facing /manus-storage path to a third party.
+            // Resolve the photo selected by the signed-in user to a temporary public
+            // HTTPS URL from object storage instead.
+            const userPhotos = await getUserPhotos(ctx.user.id);
+            const selectedPhoto = userPhotos.find(photo => photo.id === input.photoId);
+            if (!selectedPhoto?.photoKey) {
+              throw new TRPCError({
+                code: "NOT_FOUND",
+                message: "The selected photo was not found in your account.",
+              });
             }
             
-            console.log("[Shirt Try-On] Photo URL for generation:", photoUrl);
+            const sourceImageUrl = await storageGetSignedUrl(selectedPhoto.photoKey);
+            const sourceUrl = new URL(sourceImageUrl);
+            if (sourceUrl.protocol !== "https:" && sourceUrl.protocol !== "http:") {
+              throw new Error("Storage did not return an HTTP(S) source image URL");
+            }
+            
+            console.log("[Shirt Try-On] Resolved a signed HTTPS storage URL for generation");
             
             // Call the Manus image generation API with the original image for editing
             const result = await generateImage({
               prompt: prompt,
               originalImages: [
                 {
-                  url: photoUrl,
-                  mimeType: "image/jpeg",
+                  url: sourceImageUrl,
+                  mimeType: getImageMimeType(selectedPhoto.photoKey),
                 }
               ],
               model: "MODEL_GPT_IMAGE_2",
@@ -259,6 +287,12 @@ The new shirt should be ${shirtInfo.name} with a ${shirtInfo.color} color.`;
             }
           } catch (genError) {
             console.error("Image generation error:", genError);
+            if (creditsDeducted) {
+              const refunded = await addCredits(ctx.user.id, 1);
+              if (!refunded) {
+                console.error("[Shirt Try-On] Failed to refund the credit after generation failure");
+              }
+            }
             throw new TRPCError({
               code: "INTERNAL_SERVER_ERROR",
               message: `Failed to generate shirt try-on image: ${genError instanceof Error ? genError.message : 'Unknown error'}`,

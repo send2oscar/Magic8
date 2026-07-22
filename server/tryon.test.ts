@@ -1,10 +1,43 @@
-import { describe, expect, it } from "vitest";
-import { appRouter } from "./routers";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { TrpcContext } from "./_core/context";
+
+const mocks = vi.hoisted(() => ({
+  getUserCredits: vi.fn(),
+  deductCredits: vi.fn(),
+  addCredits: vi.fn(),
+  saveUserPhoto: vi.fn(),
+  getUserPhotos: vi.fn(),
+  saveTryOnHistory: vi.fn(),
+  getTryOnHistory: vi.fn(),
+  storagePut: vi.fn(),
+  storageGetSignedUrl: vi.fn(),
+  generateImage: vi.fn(),
+}));
+
+vi.mock("./db", () => ({
+  getUserCredits: mocks.getUserCredits,
+  deductCredits: mocks.deductCredits,
+  addCredits: mocks.addCredits,
+  saveUserPhoto: mocks.saveUserPhoto,
+  getUserPhotos: mocks.getUserPhotos,
+  saveTryOnHistory: mocks.saveTryOnHistory,
+  getTryOnHistory: mocks.getTryOnHistory,
+}));
+
+vi.mock("./storage", () => ({
+  storagePut: mocks.storagePut,
+  storageGetSignedUrl: mocks.storageGetSignedUrl,
+}));
+
+vi.mock("./_core/imageGeneration", () => ({
+  generateImage: mocks.generateImage,
+}));
+
+import { appRouter } from "./routers";
 
 type AuthenticatedUser = NonNullable<TrpcContext["user"]>;
 
-function createAuthContext(userId: number = 1): TrpcContext {
+function createAuthContext(userId = 1): TrpcContext {
   const user: AuthenticatedUser = {
     id: userId,
     openId: `user-${userId}`,
@@ -17,170 +50,133 @@ function createAuthContext(userId: number = 1): TrpcContext {
     lastSignedIn: new Date(),
   };
 
-  const ctx: TrpcContext = {
+  return {
     user,
-    req: {
-      protocol: "https",
-      headers: {},
-    } as TrpcContext["req"],
-    res: {
-      clearCookie: () => {},
-    } as TrpcContext["res"],
+    req: { protocol: "https", headers: {} } as TrpcContext["req"],
+    res: { clearCookie: () => {} } as TrpcContext["res"],
   };
+}
 
-  return ctx;
+function configureSuccessfulTryOn() {
+  mocks.getUserCredits.mockResolvedValue(5);
+  mocks.deductCredits.mockResolvedValue(true);
+  mocks.addCredits.mockResolvedValue(true);
+  mocks.saveTryOnHistory.mockResolvedValue({ id: 1 });
+  mocks.getUserPhotos.mockResolvedValue([
+    {
+      id: 1,
+      userId: 1,
+      photoUrl: "/manus-storage/photos/1/source.jpg",
+      photoKey: "photos/1/source.jpg",
+      uploadedAt: new Date(),
+    },
+  ]);
+  mocks.storageGetSignedUrl.mockResolvedValue("https://storage.example.test/photos/1/source.jpg?signature=test");
+  mocks.generateImage.mockResolvedValue({ url: "/manus-storage/generated/result.png" });
 }
 
 describe("Try-On Flow", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    configureSuccessfulTryOn();
+  });
+
   describe("credits.getBalance", () => {
     it("returns the user's current credit balance", async () => {
-      const ctx = createAuthContext(1);
-      const caller = appRouter.createCaller(ctx);
-
-      const result = await caller.credits.getBalance();
-
-      expect(result).toHaveProperty("balance");
-      expect(typeof result.balance).toBe("number");
-      expect(result.balance).toBeGreaterThanOrEqual(0);
+      const caller = appRouter.createCaller(createAuthContext());
+      await expect(caller.credits.getBalance()).resolves.toEqual({ balance: 5 });
     });
   });
 
   describe("shirts.list", () => {
-    it("returns available shirt styles", async () => {
-      const ctx = createAuthContext(1);
-      const caller = appRouter.createCaller(ctx);
-
+    it("returns all supported shirt styles", async () => {
+      const caller = appRouter.createCaller(createAuthContext());
       const result = await caller.shirts.list();
 
-      expect(Array.isArray(result)).toBe(true);
-      expect(result.length).toBeGreaterThan(0);
-      
-      // Check structure of first shirt
-      const firstShirt = result[0];
-      expect(firstShirt).toHaveProperty("id");
-      expect(firstShirt).toHaveProperty("name");
-      expect(firstShirt).toHaveProperty("color");
-    });
-
-    it("includes expected shirt styles", async () => {
-      const ctx = createAuthContext(1);
-      const caller = appRouter.createCaller(ctx);
-
-      const result = await caller.shirts.list();
-      const shirtNames = result.map(s => s.name);
-
-      expect(shirtNames).toContain("Classic White");
-      expect(shirtNames).toContain("Neon Pink");
-      expect(shirtNames).toContain("Electric Cyan");
-      expect(shirtNames).toContain("Dark Black");
-      expect(shirtNames).toContain("Holographic");
+      expect(result.map(style => style.name)).toEqual([
+        "Classic White",
+        "Neon Pink",
+        "Electric Cyan",
+        "Dark Black",
+        "Holographic",
+      ]);
     });
   });
 
   describe("tryOn.process", () => {
     it("requires authentication", async () => {
-      // Create context without user
-      const ctx: TrpcContext = {
+      const caller = appRouter.createCaller({
         user: null,
         req: { protocol: "https", headers: {} } as TrpcContext["req"],
         res: { clearCookie: () => {} } as TrpcContext["res"],
-      };
+      });
 
-      const caller = appRouter.createCaller(ctx);
-
-      try {
-        await caller.tryOn.process({
+      await expect(
+        caller.tryOn.process({
           photoId: 1,
-          photoUrl: "https://example.com/photo.jpg",
+          photoUrl: "/manus-storage/photos/1/source.jpg",
           shirtStyle: "classic-white",
-        });
-        expect.fail("Should have thrown an error");
-      } catch (error: any) {
-        expect(error.code).toBe("UNAUTHORIZED");
-      }
+        }),
+      ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
     });
 
-    it("deducts credits on successful try-on", async () => {
-      const ctx = createAuthContext(1);
-      const caller = appRouter.createCaller(ctx);
+    it("deducts one credit and returns a generated result for an owned photo", async () => {
+      const caller = appRouter.createCaller(createAuthContext());
 
-      // Get initial balance
-      const initialBalance = await caller.credits.getBalance();
-      const initialCredits = initialBalance.balance;
+      const result = await caller.tryOn.process({
+        photoId: 1,
+        photoUrl: "/manus-storage/photos/1/source.jpg",
+        shirtStyle: "neon-pink",
+      });
 
-      // Only test if user has credits
-      if (initialCredits > 0) {
-        const result = await caller.tryOn.process({
+      expect(mocks.deductCredits).toHaveBeenCalledWith(1, 1);
+      expect(result).toMatchObject({
+        success: true,
+        creditsRemaining: 4,
+        resultImageUrl: "/manus-storage/generated/result.png",
+        shirtApplied: "Neon Pink",
+      });
+    });
+
+    it("prevents try-on when there are no credits", async () => {
+      mocks.getUserCredits.mockResolvedValue(0);
+      const caller = appRouter.createCaller(createAuthContext());
+
+      await expect(
+        caller.tryOn.process({
           photoId: 1,
-          photoUrl: "https://example.com/photo.jpg",
-          shirtStyle: "neon-pink",
-        });
-
-        expect(result).toHaveProperty("success");
-        expect(result.success).toBe(true);
-        expect(result).toHaveProperty("creditsRemaining");
-        expect(result.creditsRemaining).toBe(initialCredits - 1);
-        expect(result).toHaveProperty("resultImageUrl");
-        expect(result).toHaveProperty("shirtApplied");
-      }
+          photoUrl: "/manus-storage/photos/1/source.jpg",
+          shirtStyle: "dark-black",
+        }),
+      ).rejects.toMatchObject({ code: "FORBIDDEN" });
+      expect(mocks.deductCredits).not.toHaveBeenCalled();
     });
 
-    it("prevents try-on when user has no credits", async () => {
-      const ctx = createAuthContext(2);
-      const caller = appRouter.createCaller(ctx);
+    it("refunds the deducted credit when image generation fails", async () => {
+      mocks.generateImage.mockRejectedValue(new Error("Image provider unavailable"));
+      const caller = appRouter.createCaller(createAuthContext());
 
-      // Check if user has 0 credits
-      const balance = await caller.credits.getBalance();
-      
-      if (balance.balance === 0) {
-        try {
-          await caller.tryOn.process({
-            photoId: 1,
-            photoUrl: "https://example.com/photo.jpg",
-            shirtStyle: "dark-black",
-          });
-          expect.fail("Should have thrown an error");
-        } catch (error: any) {
-          expect(error.message).toMatch(/credits|Insufficient/i);
-        }
-      }
-    });
-
-    it("returns result with shirt applied information", async () => {
-      const ctx = createAuthContext(1);
-      const caller = appRouter.createCaller(ctx);
-
-      const balance = await caller.credits.getBalance();
-      
-      if (balance.balance > 0) {
-        const result = await caller.tryOn.process({
+      await expect(
+        caller.tryOn.process({
           photoId: 1,
-          photoUrl: "https://example.com/photo.jpg",
-          shirtStyle: "neon-pink",
-        });
-
-        expect(result).toHaveProperty("shirtApplied");
-        expect(typeof result.shirtApplied).toBe("string");
-        expect(result.shirtApplied.length).toBeGreaterThan(0);
-      }
+          photoUrl: "/manus-storage/photos/1/source.jpg",
+          shirtStyle: "electric-cyan",
+        }),
+      ).rejects.toThrow(/Failed to generate shirt try-on image/);
+      expect(mocks.addCredits).toHaveBeenCalledWith(1, 1);
     });
   });
 
   describe("photos.list", () => {
-    it("returns user's uploaded photos", async () => {
-      const ctx = createAuthContext(1);
-      const caller = appRouter.createCaller(ctx);
-
+    it("returns the authenticated user's uploaded photos", async () => {
+      const caller = appRouter.createCaller(createAuthContext());
       const result = await caller.photos.list();
 
-      expect(Array.isArray(result)).toBe(true);
-      // May be empty if no photos uploaded
-      if (result.length > 0) {
-        const firstPhoto = result[0];
-        expect(firstPhoto).toHaveProperty("id");
-        expect(firstPhoto).toHaveProperty("photoUrl");
-        expect(firstPhoto).toHaveProperty("uploadedAt");
-      }
+      expect(result).toHaveLength(1);
+      expect(result[0]).toMatchObject({
+        id: 1,
+        photoUrl: "/manus-storage/photos/1/source.jpg",
+      });
     });
   });
 });
