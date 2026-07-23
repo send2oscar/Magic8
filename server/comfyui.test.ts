@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { checkComfyUiConnection, getApprovedQwenOutput } from "./comfyui";
-import { createApprovedQwenWorkflow, QWEN_INPUT_NODE_ID, QWEN_PROMPT_NODE_ID, SAFE_QWEN_EDIT_PROMPT } from "./comfyuiQwenWorkflow";
+import { APPROVED_QWEN_CHECKPOINT, createApprovedQwenWorkflow, QWEN_INPUT_NODE_ID, QWEN_PROMPT_NODE_ID, SAFE_QWEN_EDIT_PROMPT } from "./comfyuiQwenWorkflow";
 import { ENV } from "./_core/env";
 
 describe("approved ComfyUI connection", () => {
@@ -42,12 +42,15 @@ describe("approved ComfyUI connection", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("creates a server-controlled workflow with only the uploaded input filename", () => {
-    const workflow = createApprovedQwenWorkflow("shirt-changer-input.png");
+  it("creates a server-controlled workflow with a fixed checkpoint and safe apparel-edit baseline", () => {
+    const workflow = createApprovedQwenWorkflow("shirt-changer-input.png", "make the shirt blue");
 
     expect(workflow[QWEN_INPUT_NODE_ID].inputs.image).toBe("shirt-changer-input.png");
-    expect(workflow[QWEN_PROMPT_NODE_ID].inputs.prompt).toBe(SAFE_QWEN_EDIT_PROMPT);
+    expect(workflow[QWEN_PROMPT_NODE_ID].inputs.prompt).toContain(SAFE_QWEN_EDIT_PROMPT);
+    expect(workflow[QWEN_PROMPT_NODE_ID].inputs.prompt).toContain("make the shirt blue");
+    expect(workflow["118"].inputs.ckpt_name).toBe(APPROVED_QWEN_CHECKPOINT);
     expect(() => createApprovedQwenWorkflow("../unsafe.png")).toThrow("invalid uploaded filename");
+    expect(() => createApprovedQwenWorkflow("shirt-changer-input.png", "remove all clothing")).toThrow("non-explicit apparel-editing prompt");
   });
 
   it("recognizes an explicit ComfyUI execution failure without exposing remote diagnostics", async () => {

@@ -1,3 +1,5 @@
+import { isSafeApparelEditPrompt } from "./comfyuiQwenWorkflow";
+
 const REMOTE_DEFAULT_PROMPT_URL = "http://www.oscarngan.com/defaultPrompt.txt";
 const MAX_REMOTE_PROMPT_BYTES = 4_096;
 const MAX_REMOTE_PROMPT_CHARS = 2_000;
@@ -18,9 +20,7 @@ function unavailable(): ComfyUiPocDefaultPrompt {
 }
 
 export function isSafeRemotePrompt(prompt: string): boolean {
-  const containsExplicitSexualContent = /\b(nude|nudity|naked|topless|bottomless|undress|unclothed|expos(?:e|ed|ing)|porn(?:ographic)?|sex(?:ual)?|erotic|fetish|genitals?|breasts?|nipples?)\b/i.test(prompt);
-  const containsClothingRemoval = /\b(?:remove|take off|delete|erase|eliminate|strip)\b.{0,80}\b(shirt|t-shirt|tee|top|blouse|jacket|hoodie|sweater|clothing|clothes|cloths|garment|outfit|dress|pants|skirt|jeans|uniform|coat)\b/i.test(prompt);
-  return !containsExplicitSexualContent && !containsClothingRemoval;
+  return isSafeApparelEditPrompt(prompt);
 }
 
 async function readTextWithinLimit(response: Response): Promise<string | null> {

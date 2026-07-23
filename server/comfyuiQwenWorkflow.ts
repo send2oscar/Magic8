@@ -3,6 +3,7 @@ export const QWEN_EDIT_STYLE_NAME = "XXX";
 export const QWEN_INPUT_NODE_ID = "78";
 export const QWEN_OUTPUT_NODE_ID = "102";
 export const QWEN_PROMPT_NODE_ID = "119";
+export const APPROVED_QWEN_CHECKPOINT = "Qwen-Rapid-AIO-v11.4.safetensors";
 
 export const SAFE_QWEN_EDIT_PROMPT = [
   "Preserve the person's face, pose, body proportions, hands, and background.",
@@ -10,6 +11,21 @@ export const SAFE_QWEN_EDIT_PROMPT = [
   "Keep the person fully clothed and the result non-sexual.",
   "Use realistic fabric, lighting, shadows, and a natural fit.",
 ].join(" ");
+
+const EXPLICIT_SEXUAL_CONTENT = /\b(nude|nudity|naked|topless|bottomless|undress|unclothed|expos(?:e|ed|ing)|porn(?:ographic)?|sex(?:ual)?|erotic|fetish|genitals?|breasts?|nipples?)\b/i;
+const CLOTHING_REMOVAL = /\b(?:remove|take off|delete|erase|eliminate|strip)\b.{0,80}\b(shirt|t-shirt|tee|top|blouse|jacket|hoodie|sweater|clothing|clothes|cloths|garment|outfit|dress|pants|skirt|jeans|uniform|coat)\b/i;
+
+export function isSafeApparelEditPrompt(prompt: string): boolean {
+  return !EXPLICIT_SEXUAL_CONTENT.test(prompt) && !CLOTHING_REMOVAL.test(prompt);
+}
+
+export function buildSafeQwenEditPrompt(requestedPrompt = ""): string {
+  const normalizedPrompt = requestedPrompt.replace(/\s+/g, " ").trim();
+  if (normalizedPrompt && !isSafeApparelEditPrompt(normalizedPrompt)) {
+    throw new Error("Use a non-explicit apparel-editing prompt that keeps the person and background unchanged.");
+  }
+  return [SAFE_QWEN_EDIT_PROMPT, normalizedPrompt].filter(Boolean).join(" ");
+}
 
 type WorkflowNode = {
   inputs: Record<string, unknown>;
@@ -99,7 +115,7 @@ const APPROVED_QWEN_WORKFLOW: Workflow = {
   },
   "115": { inputs: { value: 8 }, class_type: "INTConstant", _meta: { title: "Steps" } },
   "117": { inputs: { value: 0 }, class_type: "PrimitiveInt", _meta: { title: "Seed" } },
-  "118": { inputs: { ckpt_name: "Qwen-Rapid-AIO-v11.4.safetensors" }, class_type: "CheckpointLoaderSimple", _meta: { title: "Approved Qwen checkpoint" } },
+  "118": { inputs: { ckpt_name: APPROVED_QWEN_CHECKPOINT }, class_type: "CheckpointLoaderSimple", _meta: { title: "Approved Qwen checkpoint" } },
   [QWEN_PROMPT_NODE_ID]: {
     inputs: { prompt: SAFE_QWEN_EDIT_PROMPT, clip: ["103", 1], vae: ["118", 2], image1: [QWEN_INPUT_NODE_ID, 0] },
     class_type: "TextEncodeQwenImageEditPlus",
@@ -127,13 +143,13 @@ const APPROVED_QWEN_WORKFLOW: Workflow = {
   },
 };
 
-export function createApprovedQwenWorkflow(uploadedFilename: string): Workflow {
+export function createApprovedQwenWorkflow(uploadedFilename: string, requestedPrompt = ""): Workflow {
   if (!uploadedFilename || uploadedFilename.includes("..") || uploadedFilename.includes("/")) {
     throw new Error("ComfyUI returned an invalid uploaded filename.");
   }
 
   const workflow = structuredClone(APPROVED_QWEN_WORKFLOW);
   workflow[QWEN_INPUT_NODE_ID].inputs.image = uploadedFilename;
-  workflow[QWEN_PROMPT_NODE_ID].inputs.prompt = SAFE_QWEN_EDIT_PROMPT;
+  workflow[QWEN_PROMPT_NODE_ID].inputs.prompt = buildSafeQwenEditPrompt(requestedPrompt);
   return workflow;
 }

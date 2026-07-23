@@ -9,12 +9,16 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { QWEN_INPUT_NODE_ID, QWEN_OUTPUT_NODE_ID, QWEN_PROMPT_NODE_ID } from "./comfyuiQwenWorkflow";
+import {
+  APPROVED_QWEN_CHECKPOINT,
+  buildSafeQwenEditPrompt,
+  QWEN_INPUT_NODE_ID,
+  QWEN_OUTPUT_NODE_ID,
+  QWEN_PROMPT_NODE_ID,
+} from "./comfyuiQwenWorkflow";
 
 const COMFYUI_URL = "http://oscarngan.ddns.net:8188";
 const MAX_INPUT_BYTES = 25 * 1024 * 1024;
-const DEFAULT_EDIT_PROMPT =
-  "Replace only the person's shirt with a realistic, well-fitting shirt. Preserve the person's identity, face, body proportions, pose, background, lighting, camera framing, and image quality.";
 
 export type ComfyUiPocDiagnostic = {
   key: "upload" | "submission" | "queued" | "polling" | "output" | "download" | "failed";
@@ -349,13 +353,14 @@ class ComfyUiProgressTracker {
  * Only the approved LoadImage node and positive editing prompt are replaced at runtime.
  */
 export function buildQwenWorkflow(imageFilename: string, positivePrompt = ""): Record<string, any> {
+  const safePositivePrompt = buildSafeQwenEditPrompt(positivePrompt);
   const workflow: Record<string, any> = {
     "8": { inputs: { samples: ["121", 1], vae: ["118", 2] }, class_type: "VAEDecode" },
     "66": { inputs: { shift: 3, model: ["103", 0] }, class_type: "ModelSamplingAuraFlow" },
     "75": { inputs: { strength: 1, pre_cfg: false, model: ["66", 0] }, class_type: "CFGNorm" },
     "77": {
       inputs: {
-        prompt: "ugly, blurry, distorted, artifacts, bad, wrong, low quality, anime, digital art, semirealistic, cartoon, manga, drawing, fake, unreal, large breasts",
+        prompt: "ugly, blurry, distorted, artifacts, bad, wrong, low quality, anime, digital art, semirealistic, cartoon, manga, drawing, fake, unreal",
         clip: ["103", 1],
         vae: ["118", 2],
         image: [QWEN_INPUT_NODE_ID, 0],
@@ -382,9 +387,9 @@ export function buildQwenWorkflow(imageFilename: string, positivePrompt = ""): R
     },
     "115": { inputs: { value: 8 }, class_type: "INTConstant" },
     "117": { inputs: { value: 0 }, class_type: "PrimitiveInt" },
-    "118": { inputs: { ckpt_name: "Qwen-Rapid-AIO-v11.4.safetensors" }, class_type: "CheckpointLoaderSimple" },
+    "118": { inputs: { ckpt_name: APPROVED_QWEN_CHECKPOINT }, class_type: "CheckpointLoaderSimple" },
     [QWEN_PROMPT_NODE_ID]: {
-      inputs: { prompt: positivePrompt.trim() || DEFAULT_EDIT_PROMPT, clip: ["103", 1], vae: ["118", 2], image1: [QWEN_INPUT_NODE_ID, 0] },
+      inputs: { prompt: safePositivePrompt, clip: ["103", 1], vae: ["118", 2], image1: [QWEN_INPUT_NODE_ID, 0] },
       class_type: "TextEncodeQwenImageEditPlus",
     },
     "121": {
@@ -549,6 +554,9 @@ export async function runComfyUIPOC(
     : null;
 
   try {
+    // Validate and normalize before creating a socket or uploading bytes so an
+    // unsafe prompt can never cause traffic to the owner-controlled service.
+    buildSafeQwenEditPrompt(positivePrompt);
     await tracker?.connect();
     const uploadedImage = await uploadImageToComfyUI(imageBuffer, imageName, diagnostics);
     const workflow = buildQwenWorkflow(uploadedImage.inputFilename, positivePrompt);

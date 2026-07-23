@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildQwenWorkflow, ComfyUiPocError, pollComfyUIResult, runComfyUIPOC } from "./comfyuiPoc";
-import { QWEN_INPUT_NODE_ID, QWEN_OUTPUT_NODE_ID } from "./comfyuiQwenWorkflow";
+import { APPROVED_QWEN_CHECKPOINT, QWEN_INPUT_NODE_ID, QWEN_OUTPUT_NODE_ID, SAFE_QWEN_EDIT_PROMPT } from "./comfyuiQwenWorkflow";
 
 const encoder = new TextEncoder();
 
@@ -13,10 +13,24 @@ describe("ComfyUI POC", () => {
     const workflow = buildQwenWorkflow("incoming/poc-input.png", "put a blue shirt on the person");
 
     expect(workflow[QWEN_INPUT_NODE_ID].inputs.image).toBe("incoming/poc-input.png");
-    expect(workflow["119"].inputs.prompt).toBe("put a blue shirt on the person");
+    expect(workflow["119"].inputs.prompt).toContain(SAFE_QWEN_EDIT_PROMPT);
+    expect(workflow["119"].inputs.prompt).toContain("put a blue shirt on the person");
+    expect(workflow["118"].inputs.ckpt_name).toBe(APPROVED_QWEN_CHECKPOINT);
     expect(workflow[QWEN_OUTPUT_NODE_ID].class_type).toBe("SaveImage");
     expect(workflow["104"]).toBeUndefined();
     expect(workflow["106"]).toBeUndefined();
+  });
+
+  it("rejects an unsafe prompt before creating a local ComfyUI request", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    expect(() => buildQwenWorkflow("incoming/poc-input.png", "remove all clothing")).toThrow("non-explicit apparel-editing prompt");
+    await expect(runComfyUIPOC(Buffer.from("source-image"), "portrait.png", "remove all clothing")).rejects.toMatchObject({
+      name: "ComfyUiPocError",
+      message: "The ComfyUI POC request could not be completed.",
+    } satisfies Partial<ComfyUiPocError>);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("uploads source bytes, submits the returned filename, and downloads the named output", async () => {

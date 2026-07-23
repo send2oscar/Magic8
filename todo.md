@@ -209,7 +209,9 @@
 - [x] Perform a real end-to-end run against the configured workstation and document the required desktop-side network, authentication, and workflow settings.
 - [x] Fix `XXX` to the supplied `QwenImageEditRapidv1.0` API workflow only; do not infer or accept a workflow selection from uploaded images or untrusted client input.
 - [x] Replace the Qwen workflow's LoadImage node `78` exclusively with a ComfyUI-managed uploaded filename and collect output from node `102`.
-- [ ] Review `QwenImageEditRapidv1.0(External)` for safe apparel-editing prompts, model settings, and a deterministic image input/output contract before it can replace the blocked workflow.
+- [x] Review `QwenImageEditRapidv1.0(External)` for safe apparel-editing prompts, model settings, and a deterministic image input/output contract before it can replace the blocked workflow.
+- [x] Audit and enforce the fixed Qwen workflow's model, safe prompt baseline, controlled input node, and approved output node without a local-ComfyUI request.
+- [x] Add mock-only regression coverage for the Qwen workflow's safe apparel-editing baseline and deterministic contract.
 - [ ] Re-audit the newly re-uploaded `QwenImageEditRapidv1.0(External)` contents before any connection is enabled, including its checkpoint, LoRA configuration, positive prompt, and image-output node.
 - [ ] Verify the latest re-uploaded workflow uses a non-adult checkpoint and an explicit clothing-preserving Qwen edit prompt before enabling `XXX`.
 
