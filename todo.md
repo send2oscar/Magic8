@@ -273,3 +273,9 @@
 - [x] Diagnose the reported failing direct-ComfyUI XXX background job using current task records, runtime logs, and endpoint responses.
 - [x] Repair the direct-ComfyUI XXX background job so it persists a usable remote task identifier, polls terminal status correctly, and saves successful output to Gallery.
 - [x] Add a regression case for the specific reproduced background-job failure and validate the repaired production-like path.
+- [x] Remove the short direct-ComfyUI XXX background-job expiry so a queued or executing job is not failed and refunded merely for taking a long time.
+- [x] Keep durable active-task polling and terminal completion/failure handling available while a long-running XXX job remains in the background.
+- [x] Lock the current Dashboard photo-selection control after Try On Now and show a separate new-photo button that reloads the page without interrupting the running background job.
+- [x] Add and run regression coverage for long-running XXX jobs and the Dashboard new-photo reset control.
+- [x] Keep all timeout, background-finalization, and Dashboard reset changes on direct `http://oscarngan.ddns.net:8188` ComfyUI access; do not re-enable Bridge unless the user explicitly changes this instruction.
+- [ ] After this version is published, create the project-level one-minute Heartbeat for `/api/scheduled/finalize-comfyui` so long-running direct-ComfyUI tasks finalize to Gallery even after the Dashboard reloads.

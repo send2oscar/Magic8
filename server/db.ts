@@ -296,6 +296,37 @@ export async function updateTryOnTaskStages(
   }
 }
 
+/**
+ * Transition a pending task to failed exactly once. The boolean result lets
+ * callers issue its credit refund only when this invocation won the state
+ * transition, which keeps concurrent UI polling and scheduled refreshes safe.
+ */
+export async function failPendingTryOnTask(
+  historyId: number,
+  stages: TryOnTaskStage[],
+  comfyui?: ComfyUiTaskMetadata,
+): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+
+  try {
+    const result = await db
+      .update(tryOnHistory)
+      .set({
+        status: "failed",
+        creditsDeducted: 0,
+        completedAt: new Date(),
+        bubbleApiResponse: JSON.stringify({ version: 1, taskStages: stages, ...(comfyui ? { comfyui } : {}) }),
+      })
+      .where(and(eq(tryOnHistory.id, historyId), eq(tryOnHistory.status, "pending")));
+    const header = Array.isArray(result) ? result[0] : result;
+    return Number((header as { affectedRows?: unknown }).affectedRows ?? 0) > 0;
+  } catch (error) {
+    console.error("[Database] Failed to finalize pending try-on task as failed:", error);
+    return false;
+  }
+}
+
 function parseTaskState(serialized: string | null): PersistedTryOnTaskState | null {
   if (!serialized) return null;
   try {
@@ -386,6 +417,26 @@ export async function getUserTryOnTask(userId: number, historyId: number) {
   } catch (error) {
     console.error("[Database] Failed to get user try-on task:", error);
     return null;
+  }
+}
+
+/** Return a bounded batch of direct-ComfyUI XXX tasks for the protected scheduled finalizer. */
+export async function getPendingDirectComfyUiTasks(limit: number = 5) {
+  const db = await getDb();
+  if (!db) return [];
+  try {
+    return await db
+      .select({ id: tryOnHistory.id, userId: tryOnHistory.userId })
+      .from(tryOnHistory)
+      .where(and(
+        eq(tryOnHistory.shirtStyle, QWEN_EDIT_STYLE_ID),
+        eq(tryOnHistory.status, "pending"),
+      ))
+      .orderBy(desc(tryOnHistory.id))
+      .limit(Math.min(Math.max(limit, 1), 10));
+  } catch (error) {
+    console.error("[Database] Failed to load pending direct ComfyUI tasks:", error);
+    return [];
   }
 }
 

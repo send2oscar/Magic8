@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   addCredits: vi.fn(),
   deductCredits: vi.fn(),
+  failPendingTryOnTask: vi.fn(),
   getComfyUiTaskMetadata: vi.fn(),
   getUserCredits: vi.fn(),
   getUserPhotos: vi.fn(),
@@ -21,6 +22,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("./db", () => ({
   addCredits: mocks.addCredits,
   deductCredits: mocks.deductCredits,
+  failPendingTryOnTask: mocks.failPendingTryOnTask,
   getComfyUiTaskMetadata: mocks.getComfyUiTaskMetadata,
   getUserCredits: mocks.getUserCredits,
   getUserPhotos: mocks.getUserPhotos,
@@ -30,18 +32,24 @@ vi.mock("./db", () => ({
   updateTryOnTaskStages: mocks.updateTryOnTaskStages,
 }));
 
-vi.mock("./comfyui", () => ({
-  ComfyUiConfigurationError: class ComfyUiConfigurationError extends Error {},
-  ComfyUiRemoteError: class ComfyUiRemoteError extends Error {},
-  checkComfyUiConnection: mocks.checkComfyUiConnection,
-  downloadApprovedQwenOutput: mocks.downloadApprovedQwenOutput,
-  getApprovedQwenOutput: mocks.getApprovedQwenOutput,
-  getApprovedQwenTaskProgress: mocks.getApprovedQwenTaskProgress,
-  submitApprovedQwenEdit: mocks.submitApprovedQwenEdit,
-}));
+vi.mock("./comfyui", () => {
+  class MockComfyUiRemoteError extends Error {}
+  class MockComfyUiTaskExecutionError extends MockComfyUiRemoteError {}
+  return {
+    ComfyUiConfigurationError: class ComfyUiConfigurationError extends Error {},
+    ComfyUiRemoteError: MockComfyUiRemoteError,
+    ComfyUiTaskExecutionError: MockComfyUiTaskExecutionError,
+    checkComfyUiConnection: mocks.checkComfyUiConnection,
+    downloadApprovedQwenOutput: mocks.downloadApprovedQwenOutput,
+    getApprovedQwenOutput: mocks.getApprovedQwenOutput,
+    getApprovedQwenTaskProgress: mocks.getApprovedQwenTaskProgress,
+    submitApprovedQwenEdit: mocks.submitApprovedQwenEdit,
+  };
+});
 
 vi.mock("./storage", () => ({ storagePut: mocks.storagePut }));
 
+import { ComfyUiTaskExecutionError } from "./comfyui";
 import { refreshApprovedQwenTask, startApprovedQwenTask } from "./comfyuiTask";
 
 describe("durable direct ComfyUI XXX tasks", () => {
@@ -59,6 +67,7 @@ describe("durable direct ComfyUI XXX tasks", () => {
     mocks.saveTryOnHistory.mockResolvedValue({ insertId: 801 });
     mocks.deductCredits.mockResolvedValue(true);
     mocks.addCredits.mockResolvedValue(true);
+    mocks.failPendingTryOnTask.mockResolvedValue(true);
     mocks.updateTryOnHistory.mockResolvedValue(true);
     mocks.updateTryOnTaskStages.mockResolvedValue(true);
     mocks.checkComfyUiConnection.mockResolvedValue(undefined);
@@ -86,7 +95,7 @@ describe("durable direct ComfyUI XXX tasks", () => {
     );
   });
 
-  it("stores a direct ComfyUI result in Gallery without a Bridge and keeps the ten-credit charge", async () => {
+  it("stores a direct ComfyUI result in Gallery without Bridge and keeps the ten-credit charge", async () => {
     mocks.getUserTryOnTask.mockResolvedValue({ shirtStyle: "qwen-image-edit-rapid", status: "pending", bubbleApiResponse: "{}" });
     mocks.getComfyUiTaskMetadata.mockReturnValue(taskMetadata);
     mocks.getApprovedQwenOutput.mockResolvedValue({ filename: "result.png", subfolder: "", type: "output" });
@@ -122,7 +131,29 @@ describe("durable direct ComfyUI XXX tasks", () => {
     );
   });
 
-  it("returns the full direct-ComfyUI connection failure and refunds exactly ten credits", async () => {
+  it("keeps an arbitrarily old direct-ComfyUI task pending without timing out or refunding it", async () => {
+    const oldTaskMetadata = { ...taskMetadata, queuedAt: Date.now() - 90 * 24 * 60 * 60 * 1_000 };
+    mocks.getUserTryOnTask.mockResolvedValue({ shirtStyle: "qwen-image-edit-rapid", status: "pending", bubbleApiResponse: "{}" });
+    mocks.getComfyUiTaskMetadata.mockReturnValue(oldTaskMetadata);
+    mocks.getApprovedQwenOutput.mockResolvedValue(null);
+    mocks.getApprovedQwenTaskProgress.mockResolvedValue({ phase: "queued", queueRemaining: 4, estimatedSecondsRemaining: null });
+
+    await expect(refreshApprovedQwenTask(17, 801)).resolves.toMatchObject({ status: "pending", queueRemaining: 4 });
+    expect(mocks.addCredits).not.toHaveBeenCalled();
+    expect(mocks.failPendingTryOnTask).not.toHaveBeenCalled();
+  });
+
+  it("refunds once for a terminal direct-ComfyUI workflow error", async () => {
+    mocks.getUserTryOnTask.mockResolvedValue({ shirtStyle: "qwen-image-edit-rapid", status: "pending", bubbleApiResponse: "{}" });
+    mocks.getComfyUiTaskMetadata.mockReturnValue(taskMetadata);
+    mocks.getApprovedQwenOutput.mockRejectedValue(new ComfyUiTaskExecutionError("ComfyUI workflow failed"));
+
+    await expect(refreshApprovedQwenTask(17, 801)).resolves.toMatchObject({ status: "failed" });
+    expect(mocks.failPendingTryOnTask).toHaveBeenCalledTimes(1);
+    expect(mocks.addCredits).toHaveBeenCalledWith(17, 10);
+  });
+
+  it("returns the full direct-ComfyUI submission failure and refunds exactly ten credits", async () => {
     const fullError = `ComfyUI request failed:\n${"direct diagnostic detail ".repeat(500)}END-OF-FULL-ERROR`;
     mocks.submitApprovedQwenEdit.mockRejectedValue(new Error(fullError));
 
@@ -131,6 +162,6 @@ describe("durable direct ComfyUI XXX tasks", () => {
     });
 
     expect(mocks.addCredits).toHaveBeenCalledWith(17, 10);
-    expect(mocks.updateTryOnHistory).toHaveBeenCalledWith(801, { status: "failed", creditsDeducted: 0 });
+    expect(mocks.failPendingTryOnTask).toHaveBeenCalledWith(801, expect.any(Array), undefined);
   });
 });

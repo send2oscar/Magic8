@@ -71,7 +71,7 @@ vi.mock("@/components/ui/dialog", () => ({
   DialogHeader: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   DialogTitle: ({ children }: { children: React.ReactNode }) => <h2>{children}</h2>,
 }));
-vi.mock("lucide-react", () => ({ Zap: () => null, Upload: () => null, LogOut: () => null, Shirt: () => null }));
+vi.mock("lucide-react", () => ({ Zap: () => null, Upload: () => null, LogOut: () => null, Shirt: () => null, RefreshCw: () => null }));
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -193,6 +193,20 @@ describe("Dashboard Try On Now lifecycle", () => {
 
     fireEvent.click(screen.getByText("Neon Pink (1 Credit)"));
     expect(screen.getByRole("button", { name: "Try on now" }).hasAttribute("disabled")).toBe(false);
+  });
+
+  it("locks photo selection and offers a new-photo page reset while XXX keeps running in the background", async () => {
+    mocks.balance = 15;
+    mocks.startQwenEdit.mockResolvedValue({ taskId: 991, status: "pending", creditsRemaining: 5, shirtApplied: "XXX" });
+    render(<Dashboard />);
+    await selectOwnedPhotoAndShirt("XXX (10 Credits)");
+    fireEvent.click(screen.getByRole("button", { name: "Try on now" }));
+
+    await waitFor(() => expect(mocks.startQwenEdit).toHaveBeenCalled());
+    expect(document.querySelector<HTMLInputElement>("input[type=file]")?.disabled).toBe(true);
+    expect(screen.getByRole("button", { name: "PHOTO LOCKED WHILE TASK RUNS" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("button", { name: /use another photo/i })).toBeTruthy();
+    expect(screen.getByText(/existing XXX background task keeps running/i)).toBeTruthy();
   });
 
   it("forwards unrestricted XXX prompt text unchanged to the durable background request", async () => {

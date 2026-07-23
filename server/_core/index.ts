@@ -7,6 +7,7 @@ import { registerOAuthRoutes } from "./oauth";
 import { registerStorageProxy } from "./storageProxy";
 import { registerTryOnSourceRelay } from "../tryOnSource";
 import { appRouter } from "../routers";
+import { finalizePendingComfyUiTasks } from "../comfyuiScheduledFinalizer";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 import { sdk } from "./sdk";
@@ -39,6 +40,7 @@ async function startServer() {
   registerStorageProxy(app);
   registerTryOnSourceRelay(app);
   registerOAuthRoutes(app);
+  app.post("/api/scheduled/comfyui-finalize", finalizePendingComfyUiTasks);
   
   // Direct file upload endpoint (bypasses tRPC serialization limits)
   app.post('/api/upload', async (req, res) => {

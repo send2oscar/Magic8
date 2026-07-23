@@ -2,6 +2,7 @@ import { TRPCError } from "@trpc/server";
 import {
   addCredits,
   deductCredits,
+  failPendingTryOnTask,
   getComfyUiTaskMetadata,
   getUserCredits,
   getUserPhotos,
@@ -16,6 +17,7 @@ import {
   checkComfyUiConnection,
   ComfyUiConfigurationError,
   ComfyUiRemoteError,
+  ComfyUiTaskExecutionError,
   downloadApprovedQwenOutput,
   getApprovedQwenOutput,
   getApprovedQwenTaskProgress,
@@ -23,8 +25,6 @@ import {
 } from "./comfyui";
 import { QWEN_EDIT_CREDIT_COST, QWEN_EDIT_STYLE_ID, QWEN_EDIT_STYLE_NAME } from "./comfyuiQwenWorkflow";
 import { storagePut } from "./storage";
-
-const MAX_QWEN_QUEUE_AGE_MS = 10 * 60 * 1_000;
 
 function getInsertedHistoryId(result: unknown): number | null {
   const candidates = Array.isArray(result) ? result : [result];
@@ -84,10 +84,10 @@ async function refundAndFail(
   message: string,
   metadata?: ComfyUiTaskMetadata,
 ) {
+  const markedFailed = await failPendingTryOnTask(historyId, failStages(stages, message), metadata);
+  if (!markedFailed) return;
   const refunded = await addCredits(userId, QWEN_EDIT_CREDIT_COST);
   if (!refunded) console.error("[ComfyUI] Failed to refund XXX credits for task", { historyId, credits: QWEN_EDIT_CREDIT_COST });
-  await updateTryOnTaskStages(historyId, failStages(stages, message), metadata);
-  await updateTryOnHistory(historyId, { status: "failed", creditsDeducted: 0 });
 }
 
 /** Creates a durable direct-ComfyUI Qwen task using the fixed approved workflow. */
@@ -169,12 +169,6 @@ export async function refreshApprovedQwenTask(userId: number, historyId: number)
     return { status: "failed" as const, message };
   }
 
-  if (Date.now() - metadata.queuedAt > MAX_QWEN_QUEUE_AGE_MS) {
-    const message = "The Qwen workstation did not finish in time. Your credit has been returned.";
-    await refundAndFail(userId, historyId, existingStages, message, metadata);
-    return { status: "failed" as const, message };
-  }
-
   try {
     const output = await getApprovedQwenOutput(metadata.promptId);
     if (!output) {
@@ -209,7 +203,7 @@ export async function refreshApprovedQwenTask(userId: number, historyId: number)
     await updateTryOnTaskStages(historyId, completeStage(stages, "completed", "XXX edit complete"), metadata);
     return { status: "success" as const, resultImageUrl: stored.url, shirtApplied: QWEN_EDIT_STYLE_NAME };
   } catch (error) {
-    if (error instanceof ComfyUiRemoteError && Date.now() - metadata.queuedAt <= MAX_QWEN_QUEUE_AGE_MS) {
+    if (error instanceof ComfyUiRemoteError && !(error instanceof ComfyUiTaskExecutionError)) {
       const alreadyWaiting = existingStages.some(stage => stage.key === "workstation_reconnect" && stage.state === "active");
       const stages = alreadyWaiting
         ? existingStages

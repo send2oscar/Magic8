@@ -21,6 +21,14 @@ export class ComfyUiRemoteError extends Error {
   }
 }
 
+/** A terminal failure recorded by ComfyUI for the submitted workflow itself. */
+export class ComfyUiTaskExecutionError extends ComfyUiRemoteError {
+  constructor(message: string) {
+    super(message);
+    this.name = "ComfyUiTaskExecutionError";
+  }
+}
+
 type ComfyUiConfig = { baseUrl: URL; token?: string };
 
 function getComfyUiConfig(): ComfyUiConfig {
@@ -222,7 +230,7 @@ export async function getApprovedQwenOutput(promptId: string): Promise<ComfyUiOu
     typeof executionStatus === "object" && executionStatus !== null &&
     (executionStatus as { status_str?: unknown }).status_str === "error"
   ) {
-    throw new ComfyUiRemoteError("The Qwen workstation reported a failed image edit.");
+    throw new ComfyUiTaskExecutionError("The Qwen workstation reported a failed image edit.");
   }
 
   const outputs = (task as { outputs?: unknown }).outputs;

@@ -6,7 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
 import { advanceTryOnProgress, getTryOnProgressLabel } from "@/lib/tryOnProgress";
 import React, { useEffect, useRef, useState } from "react";
-import { Zap, Upload, LogOut, Shirt } from "lucide-react";
+import { Zap, Upload, LogOut, Shirt, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/_core/hooks/useAuth";
 
@@ -169,12 +169,15 @@ export default function Dashboard() {
     setLocation("/");
   };
 
+  const isPhotoSelectionLocked = isTryingOn || activeQwenTaskId !== null;
+
   const handleShirtSelection = (shirtId: string) => {
     setSelectedShirt(shirtId);
     setPositivePrompt(SHIRT_PROMPTS[shirtId] ?? "");
   };
 
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (isPhotoSelectionLocked) return;
     const file = e.target.files?.[0];
     if (!file) {
       return;
@@ -400,7 +403,7 @@ export default function Dashboard() {
                   type="file"
                   accept="image/*"
                   onChange={handlePhotoUpload}
-                  disabled={isUploading || isTryingOn}
+                  disabled={isUploading || isPhotoSelectionLocked}
                   className="hidden"
                   id="photo-upload"
                 />
@@ -409,15 +412,31 @@ export default function Dashboard() {
               <label htmlFor="photo-upload" className="block">
                 <Button
                   className="w-full px-6 py-3 bg-secondary text-background font-bold border-2 border-secondary cursor-pointer"
-                  disabled={isUploading || isTryingOn}
+                  disabled={isUploading || isPhotoSelectionLocked}
                   onClick={(e) => {
                     e.preventDefault();
                     document.getElementById('photo-upload')?.click();
                   }}
                 >
-                  {isUploading ? "UPLOADING..." : "SELECT PHOTO"}
+                  {isUploading ? "UPLOADING..." : isPhotoSelectionLocked ? "PHOTO LOCKED WHILE TASK RUNS" : "SELECT PHOTO"}
                 </Button>
               </label>
+              {isPhotoSelectionLocked && (
+                <div className="space-y-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full border-accent text-accent hover:bg-accent/10"
+                    onClick={() => window.location.reload()}
+                  >
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                    USE ANOTHER PHOTO
+                  </Button>
+                  <p className="text-xs text-muted-foreground">
+                    This reloads the workspace for a new task. Your existing XXX background task keeps running and will be saved to Gallery when it finishes.
+                  </p>
+                </div>
+              )}
             </div>
           </Card>
 
