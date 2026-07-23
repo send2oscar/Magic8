@@ -24,9 +24,9 @@ function Router() {
       <Route path={"/register"} component={Register} />
       <Route path={"/dashboard"} component={Dashboard} />
       <Route path={"/gallery"} component={Gallery} />
-      <Route path={"admin/login"} component={AdminLogin} />
-      <Route path={"admin"} component={AdminPanel} />
-      <Route path={"poc/comfyui"} component={POCComfyUI} />
+      <Route path={"/admin/login"} component={AdminLogin} />
+      <Route path={"/admin"} component={AdminPanel} />
+      <Route path={"/poc/comfyui"} component={POCComfyUI} />
       <Route path={"/404"} component={NotFound} />
       {/* Final fallback route */}
       <Route component={NotFound} />
