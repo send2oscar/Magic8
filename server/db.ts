@@ -402,6 +402,7 @@ export async function getUserGallery(userId: number, limit: number = 60) {
         resultImageUrl: tryOnHistory.resultImageUrl,
         createdAt: tryOnHistory.createdAt,
         completedAt: tryOnHistory.completedAt,
+        creditsDeducted: tryOnHistory.creditsDeducted,
       })
       .from(tryOnHistory)
       .leftJoin(userPhotos, and(eq(userPhotos.id, tryOnHistory.photoId), eq(userPhotos.userId, tryOnHistory.userId)))

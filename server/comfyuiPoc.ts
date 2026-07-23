@@ -162,9 +162,14 @@ function getExecutionFailureMessage(messages: unknown[] | undefined): string {
 }
 
 async function readJson<T>(response: Response): Promise<T | null> {
+  const contentType = response.headers.get("content-type");
+  if (contentType?.includes("text/html")) {
+    throw new Error(`Expected JSON, but received HTML. Status: ${response.status}. Content-Type: ${contentType}`);
+  }
   try {
     return (await response.json()) as T;
-  } catch {
+  } catch (error) {
+    console.warn("[ComfyUI POC] Failed to parse JSON response", error);
     return null;
   }
 }

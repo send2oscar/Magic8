@@ -10,6 +10,11 @@ import { Zap, Upload, LogOut, Shirt } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/_core/hooks/useAuth";
 
+function formatEstimatedTime(seconds: number) {
+  if (seconds < 60) return `about ${seconds}s`;
+  return `about ${Math.ceil(seconds / 60)} min`;
+}
+
 const DEMO_PHOTO_URL = '/manus-storage/demo_person_31d5a68a.jpg';
 const QWEN_EDIT_STYLE_ID = "qwen-image-edit-rapid";
 const IDLE_COMFYUI_TASK_ID = "00000000-0000-4000-8000-000000000000";
@@ -374,7 +379,7 @@ export default function Dashboard() {
                   type="file"
                   accept="image/*"
                   onChange={handlePhotoUpload}
-                  disabled={isUploading}
+                  disabled={isUploading || isTryingOn}
                   className="hidden"
                   id="photo-upload"
                 />
@@ -383,7 +388,7 @@ export default function Dashboard() {
               <label htmlFor="photo-upload" className="block">
                 <Button
                   className="w-full px-6 py-3 bg-secondary text-background font-bold border-2 border-secondary cursor-pointer"
-                  disabled={isUploading}
+                  disabled={isUploading || isTryingOn}
                   onClick={(e) => {
                     e.preventDefault();
                     document.getElementById('photo-upload')?.click();
@@ -414,7 +419,7 @@ export default function Dashboard() {
                       }`}
                     >
                       <Shirt className="w-6 h-6 mx-auto mb-2" style={{ color: shirt.color }} />
-                      <p className="text-sm font-bold">{shirt.name}</p>
+                      <p className="text-sm font-bold">{shirt.name} (1 Credit)</p>
                     </button>
                   ))}
                   <button
@@ -427,7 +432,7 @@ export default function Dashboard() {
                     }`}
                   >
                     <Shirt className="w-6 h-6 mx-auto mb-2" />
-                    <p className="text-sm font-bold">XXX</p>
+                    <p className="text-sm font-bold">XXX (10 Credits)</p>
                     <p className="mt-1 text-xs text-muted-foreground">Qwen edit</p>
                   </button>
                 </div>
@@ -474,7 +479,21 @@ export default function Dashboard() {
                   <div className="space-y-4 rounded border border-accent/40 bg-background/40 p-4" aria-live="polite">
                     <div className="flex items-center justify-between gap-3">
                       <p className="text-sm font-bold neon-cyan">LIVE TASK LOG</p>
-                      <p className="text-xs text-muted-foreground">{elapsedSeconds}s elapsed</p>
+                      {activeComfyUiTaskId ? (
+                        <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                          {comfyUiLiveStatusQuery.data?.percent !== null && comfyUiLiveStatusQuery.data?.percent !== undefined && (
+                            <span>Progress: {comfyUiLiveStatusQuery.data.percent}%</span>
+                          )}
+                          {comfyUiLiveStatusQuery.data?.estimatedSecondsRemaining !== null && comfyUiLiveStatusQuery.data?.estimatedSecondsRemaining !== undefined && (
+                            <span>Estimated remaining: {formatEstimatedTime(comfyUiLiveStatusQuery.data.estimatedSecondsRemaining)}</span>
+                          )}
+                          {comfyUiLiveStatusQuery.data?.queueRemaining !== null && comfyUiLiveStatusQuery.data?.queueRemaining !== undefined && (
+                            <span>Queue: {comfyUiLiveStatusQuery.data.queueRemaining}</span>
+                          )}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-muted-foreground">{elapsedSeconds}s elapsed</p>
+                      )}
                     </div>
                     <ol className="space-y-2 text-sm">
                       {liveTaskStages.map((stage) => (
@@ -490,7 +509,7 @@ export default function Dashboard() {
                     </ol>
                     <p className="text-xs text-muted-foreground">
                       {activeComfyUiTaskId
-                        ? "XXX results are saved to your private gallery and one credit is deducted only after that save succeeds."
+                        ? comfyUiLiveStatusQuery.data?.label ?? "XXX results are saved to your private gallery and one credit is deducted only after that save succeeds."
                         : liveProgress >= 92
                           ? "The AI provider is still working. This request will remain open until it returns a result or a safe failure."
                           : "Preparing your edit. The current server-confirmed stage appears above."}
@@ -505,14 +524,14 @@ export default function Dashboard() {
 
       {/* Result Dialog */}
       <Dialog open={showResult} onOpenChange={setShowResult}>
-        <DialogContent className="max-w-3xl p-0 border-0 bg-transparent">
+        <DialogContent className="max-w-3xl p-0 border bg-card">
           <DialogHeader className="p-6 pb-0">
             <DialogTitle className="text-2xl font-bold neon-cyan">TRY-ON RESULT</DialogTitle>
           </DialogHeader>
           <div className="p-6">
             {resultData?.resultImageUrl ? (
-              <div className="space-y-4">
-                <img src={resultData.resultImageUrl} alt="Try-on result" className="w-full h-auto rounded-lg" />
+              <div className="space-y-4 p-4">
+                <img src={resultData.resultImageUrl} alt="Try-on result" className="w-full h-auto rounded-lg border border-accent/50" />
                 <p className="text-sm text-muted-foreground">Shirt applied: {resultData.shirtApplied}</p>
                 {resultData?.savedToGallery && <p className="text-sm text-secondary">Saved automatically to your private gallery. One credit was deducted after this result was stored.</p>}
               </div>

@@ -231,3 +231,20 @@
 - [ ] Update Dashboard to show Bridge pairing/availability and to queue `XXX` only when the paired Bridge is online, preserving all existing non-XXX try-on styles.
 - [ ] Add migration, unit, integration, and UI coverage for pairing, device isolation, leases, retries, offline handling, output persistence, and credit refund behaviour.
 - [ ] Produce Windows installation, first-pairing, start/stop, and troubleshooting instructions, then complete a real local end-to-end test on the ComfyUI workstation.
+
+## New Feature Requests
+- [x] When image is processing, disable the "Select Photo" button until the process is completed.
+- [x] When using XXX (to local Comfy), show the details of Comfy server status in Live Log (like POC).
+- [x] Fix the error message "Unexpected token '<', "<!DOCTYPE" ... is not valid JSON" when using XXX even if photo is completed."
+- [x] In the Gallery, scroll to the top when landing the page.
+- [x] In the Gallery, show the credit deducted of that generation.
+- [x] In the Dashboard page, add the corresponding credit will be deducted after the option [e.g. Classic White --> Class White (1 Credit)]. Only the XXX option deducts 10 credits, and other 5 options deducts 1 credit.
+- [x] Add a border, with a background color of the preview window of the result photo (after generation).
+
+- [x] When image is processing, disable the "Select Photo" button until the process is completed.
+- [x] When using XXX (to my local Comfy), show the details of my Comfy server status in Live Log (like what we have in POC).
+- [x] Fix the error message "Unexpected token '<', "<!DOCTYPE" ... is not valid JSON" when using XXX even if photo is completed."
+- [x] In the Gallery, scroll to the top when landing the page.
+- [x] In the Gallery, also show the credit deducted of that generation.
+- [x] In the Dashboard page, add the corresponding credit will be deducted after the option [e.g. Classic White --> Class White (1 Credit)]. Only the XXX option deducts 10 credits, and other 5 options deducts 1 credit.
+- [x] Add a border, with a background color of the preview window of the result photo (after generation).

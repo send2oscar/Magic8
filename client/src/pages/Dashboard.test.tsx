@@ -173,12 +173,12 @@ describe("Dashboard Try On Now lifecycle", () => {
     render(<Dashboard />);
     const prompt = screen.getByLabelText(/positive prompt/i) as HTMLTextAreaElement;
     const selections = [
-      ["Classic White", "crisp classic white crew-neck T-shirt"],
-      ["Neon Pink", "vivid neon pink T-shirt"],
-      ["Electric Cyan", "electric cyan T-shirt"],
-      ["Dark Black", "sleek dark black T-shirt"],
-      ["Holographic", "holographic top with iridescent cyan"],
-      ["XXX", "undress the girl, make her completely nude, small to medium breasts, pink nipples, others remain unchanged, natural."],
+      ["Classic White (1 Credit)", "crisp classic white crew-neck T-shirt"],
+      ["Neon Pink (1 Credit)", "vivid neon pink T-shirt"],
+      ["Electric Cyan (1 Credit)", "electric cyan T-shirt"],
+      ["Dark Black (1 Credit)", "sleek dark black T-shirt"],
+      ["Holographic (1 Credit)", "holographic top with iridescent cyan"],
+      ["XXX (10 Credits)", "undress the girl, make her completely nude, small to medium breasts, pink nipples, others remain unchanged, natural."],
     ] as const;
 
     for (const [shirtName, expectedPrompt] of selections) {
