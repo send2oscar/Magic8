@@ -554,9 +554,6 @@ export async function runComfyUIPOC(
     : null;
 
   try {
-    // Validate and normalize before creating a socket or uploading bytes so an
-    // unsafe prompt can never cause traffic to the owner-controlled service.
-    buildSafeQwenEditPrompt(positivePrompt);
     await tracker?.connect();
     const uploadedImage = await uploadImageToComfyUI(imageBuffer, imageName, diagnostics);
     const workflow = buildQwenWorkflow(uploadedImage.inputFilename, positivePrompt);

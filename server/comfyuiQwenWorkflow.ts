@@ -12,18 +12,15 @@ export const SAFE_QWEN_EDIT_PROMPT = [
   "Use realistic fabric, lighting, shadows, and a natural fit.",
 ].join(" ");
 
-const EXPLICIT_SEXUAL_CONTENT = /\b(nude|nudity|naked|topless|bottomless|undress|unclothed|expos(?:e|ed|ing)|porn(?:ographic)?|sex(?:ual)?|erotic|fetish|genitals?|breasts?|nipples?)\b/i;
-const CLOTHING_REMOVAL = /\b(?:remove|take off|delete|erase|eliminate|strip)\b.{0,80}\b(shirt|t-shirt|tee|top|blouse|jacket|hoodie|sweater|clothing|clothes|cloths|garment|outfit|dress|pants|skirt|jeans|uniform|coat)\b/i;
-
 export function isSafeApparelEditPrompt(prompt: string): boolean {
-  return !EXPLICIT_SEXUAL_CONTENT.test(prompt) && !CLOTHING_REMOVAL.test(prompt);
+  // Kept as a compatibility export for callers from earlier versions. There
+  // are intentionally no keyword or content restrictions on prompt text.
+  void prompt;
+  return true;
 }
 
 export function buildSafeQwenEditPrompt(requestedPrompt = ""): string {
   const normalizedPrompt = requestedPrompt.replace(/\s+/g, " ").trim();
-  if (normalizedPrompt && !isSafeApparelEditPrompt(normalizedPrompt)) {
-    throw new Error("Use a non-explicit apparel-editing prompt that keeps the person and background unchanged.");
-  }
   return [SAFE_QWEN_EDIT_PROMPT, normalizedPrompt].filter(Boolean).join(" ");
 }
 

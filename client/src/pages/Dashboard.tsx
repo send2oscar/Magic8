@@ -13,6 +13,14 @@ import { useAuth } from "@/_core/hooks/useAuth";
 const DEMO_PHOTO_URL = '/manus-storage/demo_person_31d5a68a.jpg';
 const QWEN_EDIT_STYLE_ID = "qwen-image-edit-rapid";
 const IDLE_COMFYUI_TASK_ID = "00000000-0000-4000-8000-000000000000";
+const SHIRT_PROMPTS: Record<string, string> = {
+  "classic-white": "Change the current shirt to a crisp classic white crew-neck T-shirt. Preserve the person's face, pose, hands, body proportions, and background.",
+  "neon-pink": "Change the current shirt to a vivid neon pink T-shirt with realistic fabric texture and lighting. Preserve the person's face, pose, hands, body proportions, and background.",
+  "electric-cyan": "Change the current shirt to an electric cyan T-shirt with realistic fabric texture and lighting. Preserve the person's face, pose, hands, body proportions, and background.",
+  "dark-black": "Change the current shirt to a sleek dark black T-shirt with realistic fabric texture and lighting. Preserve the person's face, pose, hands, body proportions, and background.",
+  holographic: "Change the current shirt to a holographic top with iridescent cyan, magenta, and violet reflections. Preserve the person's face, pose, hands, body proportions, and background.",
+  [QWEN_EDIT_STYLE_ID]: "To Be Confirmed By Developer",
+};
 
 type SelectedPhoto = {
   id: number | null;
@@ -94,10 +102,10 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => {
-    if (hasAppliedDefaultPrompt.current || defaultPromptQuery.isLoading) return;
+    if (hasAppliedDefaultPrompt.current || defaultPromptQuery.isLoading || selectedShirt) return;
     hasAppliedDefaultPrompt.current = true;
     if (defaultPromptQuery.data?.prompt) setPositivePrompt(defaultPromptQuery.data.prompt);
-  }, [defaultPromptQuery.data?.prompt, defaultPromptQuery.isLoading]);
+  }, [defaultPromptQuery.data?.prompt, defaultPromptQuery.isLoading, selectedShirt]);
 
   if (loading) {
     return (
@@ -126,6 +134,11 @@ export default function Dashboard() {
   const handleLogout = async () => {
     await logout();
     setLocation("/");
+  };
+
+  const handleShirtSelection = (shirtId: string) => {
+    setSelectedShirt(shirtId);
+    setPositivePrompt(SHIRT_PROMPTS[shirtId] ?? "");
   };
 
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -393,7 +406,7 @@ export default function Dashboard() {
                   {shirtsQuery.data?.map((shirt) => (
                     <button
                       key={shirt.id}
-                      onClick={() => setSelectedShirt(shirt.id)}
+                      onClick={() => handleShirtSelection(shirt.id)}
                       className={`p-4 rounded border-2 transition text-center ${
                         selectedShirt === shirt.id
                           ? "border-secondary bg-secondary/20"
@@ -406,7 +419,7 @@ export default function Dashboard() {
                   ))}
                   <button
                     key={QWEN_EDIT_STYLE_ID}
-                    onClick={() => setSelectedShirt(QWEN_EDIT_STYLE_ID)}
+                    onClick={() => handleShirtSelection(QWEN_EDIT_STYLE_ID)}
                     className={`p-4 rounded border-2 transition text-center ${
                       selectedShirt === QWEN_EDIT_STYLE_ID
                         ? "border-secondary bg-secondary/20"
@@ -428,7 +441,7 @@ export default function Dashboard() {
                     placeholder="e.g. Change the shirt to yellow; keep the person and background unchanged."
                     className="min-h-24 resize-y border-accent/40 bg-background/50 text-foreground focus-visible:ring-secondary"
                   />
-                  <p className="text-xs text-muted-foreground">Used only for the XXX Qwen ComfyUI edit. Use a non-explicit apparel-editing instruction.</p>
+                  <p className="text-xs text-muted-foreground">Selecting a shirt fills its suggested prompt. The value is submitted only for the XXX Qwen ComfyUI edit.</p>
                 </div>
               </div>
             </Card>

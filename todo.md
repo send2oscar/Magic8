@@ -166,12 +166,17 @@
 
 - [x] Update the upload preview to use a consistent 500px-maximum square viewport that scales down only on narrow screens without overflow, and verify it remains stable when the browser width changes.
 - [ ] Add real oversized-image handling for preview/upload (e.g. canvas/client-side resize or another implemented size-normalization path) and regression coverage for portrait images filling the fixed preview without cropping.
+- [ ] Normalize oversized client-side uploads to a bounded JPEG/WebP representation while retaining the original aspect ratio and avoiding crop operations.
+- [ ] Add regression coverage for both oversized portrait and landscape uploads, including a fully contained preview result.
 - [x] Repair the responsive upload preview so portrait and landscape photos preserve their native aspect ratio, remain fully contained, and never overflow the bordered viewport.
 - [x] Run type checking, automated tests, and desktop/mobile visual verification for the release candidate.
 - [x] Save a release-ready checkpoint for publication.
 - [x] Restore the Dashboard live task-log rendering required by existing Try On lifecycle tests before release.
 
 ## ComfyUI Desktop Workflow Integration
+- [x] Define Positive Prompt text for every Dashboard shirt option, including `Classic White`, and populate it when the selection changes.
+- [x] Add Dashboard regression coverage proving each shirt selection updates the Positive Prompt textarea with its corresponding prompt.
+- [x] Set the `XXX` selection's Positive Prompt autofill text exactly to `To Be Confirmed By Developer` and cover it with a mock-only Dashboard regression.
 - [x] Add a Positive Prompt textarea directly below the authenticated Shirt Changer “Select Shirt” control.
 - [x] Route only the user-selected `XXX` shirt style through the existing Qwen ComfyUI POC, passing the submitted image and permitted apparel-editing prompt.
 - [x] Keep the selected `XXX` Qwen ComfyUI POC flow inline within the Dashboard rather than navigating to the standalone POC page.
@@ -212,6 +217,8 @@
 - [x] Review `QwenImageEditRapidv1.0(External)` for safe apparel-editing prompts, model settings, and a deterministic image input/output contract before it can replace the blocked workflow.
 - [x] Audit and enforce the fixed Qwen workflow's model, safe prompt baseline, controlled input node, and approved output node without a local-ComfyUI request.
 - [x] Add mock-only regression coverage for the Qwen workflow's safe apparel-editing baseline and deterministic contract.
+- [x] Remove all Positive Prompt keyword restrictions across the remote default loader, direct POC, and Dashboard Qwen path; retain only non-content operational validation.
+- [x] Update prompt-validation regression coverage so arbitrary textual prompts are accepted without sending requests to the local ComfyUI host.
 - [ ] Re-audit the newly re-uploaded `QwenImageEditRapidv1.0(External)` contents before any connection is enabled, including its checkpoint, LoRA configuration, positive prompt, and image-output node.
 - [ ] Verify the latest re-uploaded workflow uses a non-adult checkpoint and an explicit clothing-preserving Qwen edit prompt before enabling `XXX`.
 

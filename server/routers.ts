@@ -48,7 +48,7 @@ import {
 } from "./localBridgeQwenTask";
 import { ComfyUiPocError, runComfyUIPOC } from "./comfyuiPoc";
 import { createComfyUiPocLiveStatus, getComfyUiPocLiveStatus, updateComfyUiPocLiveStatus } from "./comfyuiPocLiveStatus";
-import { getComfyUiPocDefaultPrompt, isSafeRemotePrompt } from "./comfyuiPocDefaultPrompt";
+import { getComfyUiPocDefaultPrompt } from "./comfyuiPocDefaultPrompt";
 import { processDashboardQwenPoc } from "./dashboardQwenPoc";
 
 // Shirt styles available for try-on
@@ -430,12 +430,6 @@ export const appRouter = router({
         })
       )
       .mutation(async ({ ctx, input }) => {
-        if (input.positivePrompt?.trim() && !isSafeRemotePrompt(input.positivePrompt)) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: "Use a non-explicit apparel-editing prompt that keeps the person and background unchanged.",
-          });
-        }
         createComfyUiPocLiveStatus(input.taskId, ctx.user.id);
         try {
           const imageBuffer = Buffer.from(input.imageBase64, 'base64');

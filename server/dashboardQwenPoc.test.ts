@@ -9,7 +9,6 @@ const mocks = vi.hoisted(() => ({
   updateTryOnHistory: vi.fn(),
   updateTryOnTaskStages: vi.fn(),
   runComfyUIPOC: vi.fn(),
-  isSafeRemotePrompt: vi.fn(),
   createComfyUiPocLiveStatus: vi.fn(),
   updateComfyUiPocLiveStatus: vi.fn(),
   storageGetSignedUrl: vi.fn(),
@@ -31,7 +30,6 @@ vi.mock("./comfyuiPoc", () => ({
   runComfyUIPOC: mocks.runComfyUIPOC,
 }));
 
-vi.mock("./comfyuiPocDefaultPrompt", () => ({ isSafeRemotePrompt: mocks.isSafeRemotePrompt }));
 vi.mock("./comfyuiPocLiveStatus", () => ({
   createComfyUiPocLiveStatus: mocks.createComfyUiPocLiveStatus,
   updateComfyUiPocLiveStatus: mocks.updateComfyUiPocLiveStatus,
@@ -53,7 +51,6 @@ const task = {
 describe("Dashboard XXX Qwen POC", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.isSafeRemotePrompt.mockReturnValue(true);
     mocks.getUserCredits.mockResolvedValue(3);
     mocks.getUserPhotos.mockResolvedValue([{ id: task.photoId, photoKey: "uploads/user-8/source.jpg" }]);
     mocks.saveTryOnHistory.mockResolvedValue({ insertId: 71 });
@@ -102,13 +99,16 @@ describe("Dashboard XXX Qwen POC", () => {
     }));
   });
 
-  it("rejects an unsafe prompt before creating a task or contacting the ComfyUI runner", async () => {
-    mocks.isSafeRemotePrompt.mockReturnValue(false);
+  it("passes unrestricted prompt text through the mocked Qwen flow", async () => {
+    const unrestrictedTask = { ...task, positivePrompt: "Remove the subject's clothing." };
 
-    await expect(processDashboardQwenPoc(task)).rejects.toMatchObject({ code: "BAD_REQUEST" });
-    expect(mocks.saveTryOnHistory).not.toHaveBeenCalled();
-    expect(mocks.runComfyUIPOC).not.toHaveBeenCalled();
-    expect(mocks.deductCredits).not.toHaveBeenCalled();
+    await expect(processDashboardQwenPoc(unrestrictedTask)).resolves.toMatchObject({ success: true });
+    expect(mocks.runComfyUIPOC).toHaveBeenCalledWith(
+      Buffer.from("source-image"),
+      "source.jpg",
+      unrestrictedTask.positivePrompt,
+      expect.objectContaining({ clientId: unrestrictedTask.taskId }),
+    );
   });
 
   it("does not charge a credit when ComfyUI fails before a managed result is saved", async () => {

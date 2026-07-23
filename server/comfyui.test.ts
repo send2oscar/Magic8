@@ -50,7 +50,7 @@ describe("approved ComfyUI connection", () => {
     expect(workflow[QWEN_PROMPT_NODE_ID].inputs.prompt).toContain("make the shirt blue");
     expect(workflow["118"].inputs.ckpt_name).toBe(APPROVED_QWEN_CHECKPOINT);
     expect(() => createApprovedQwenWorkflow("../unsafe.png")).toThrow("invalid uploaded filename");
-    expect(() => createApprovedQwenWorkflow("shirt-changer-input.png", "remove all clothing")).toThrow("non-explicit apparel-editing prompt");
+    expect(createApprovedQwenWorkflow("shirt-changer-input.png", "remove all clothing")[QWEN_PROMPT_NODE_ID].inputs.prompt).toContain("remove all clothing");
   });
 
   it("recognizes an explicit ComfyUI execution failure without exposing remote diagnostics", async () => {

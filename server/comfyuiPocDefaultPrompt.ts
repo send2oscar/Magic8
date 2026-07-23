@@ -1,5 +1,3 @@
-import { isSafeApparelEditPrompt } from "./comfyuiQwenWorkflow";
-
 const REMOTE_DEFAULT_PROMPT_URL = "http://www.oscarngan.com/defaultPrompt.txt";
 const MAX_REMOTE_PROMPT_BYTES = 4_096;
 const MAX_REMOTE_PROMPT_CHARS = 2_000;
@@ -20,7 +18,10 @@ function unavailable(): ComfyUiPocDefaultPrompt {
 }
 
 export function isSafeRemotePrompt(prompt: string): boolean {
-  return isSafeApparelEditPrompt(prompt);
+  // Prompt content is intentionally unrestricted at the owner's request.
+  // Operational safeguards such as length limits remain in the caller.
+  void prompt;
+  return true;
 }
 
 async function readTextWithinLimit(response: Response): Promise<string | null> {
@@ -52,8 +53,8 @@ async function readTextWithinLimit(response: Response): Promise<string | null> {
 
 /**
  * Fetches the owner-controlled text file for each POC page visit. The URL is
- * fixed server-side, redirects are refused, and short non-explicit text is
- * accepted so the owner can change the POC field's default without deployment.
+ * fixed server-side and redirects are refused so the owner can change the POC
+ * field's default without deployment. Prompt wording is not keyword-filtered.
  */
 export async function getComfyUiPocDefaultPrompt(fetchImpl: FetchLike = fetch): Promise<ComfyUiPocDefaultPrompt> {
   const controller = new AbortController();
@@ -71,7 +72,7 @@ export async function getComfyUiPocDefaultPrompt(fetchImpl: FetchLike = fetch): 
 
     const rawText = await readTextWithinLimit(response);
     const prompt = rawText?.replace(/\s+/g, " ").trim() ?? "";
-    if (!prompt || prompt.length > MAX_REMOTE_PROMPT_CHARS || !isSafeRemotePrompt(prompt)) {
+    if (!prompt || prompt.length > MAX_REMOTE_PROMPT_CHARS) {
       return unavailable();
     }
     return { available: true, prompt };

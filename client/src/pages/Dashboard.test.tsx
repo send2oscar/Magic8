@@ -30,7 +30,13 @@ vi.mock("@/lib/trpc", () => ({
       },
     },
     shirts: {
-      list: { useQuery: () => ({ data: [{ id: "neon-pink", name: "Neon Pink", color: "#ff00aa" }] }) },
+      list: { useQuery: () => ({ data: [
+        { id: "classic-white", name: "Classic White", color: "#ffffff" },
+        { id: "neon-pink", name: "Neon Pink", color: "#ff00aa" },
+        { id: "electric-cyan", name: "Electric Cyan", color: "#00d9ff" },
+        { id: "dark-black", name: "Dark Black", color: "#0a0e27" },
+        { id: "holographic", name: "Holographic", color: "#ff00ff" },
+      ] }) },
     },
     tryOn: {
       process: { useMutation: () => ({ mutateAsync: mocks.mutateAsync }) },
@@ -163,6 +169,24 @@ describe("Dashboard Try On Now lifecycle", () => {
     expect(mocks.toastSuccess).toHaveBeenCalledWith("Try-on completed!");
   });
 
+  it("fills the Positive Prompt textarea with the matching suggestion for every shirt selection", () => {
+    render(<Dashboard />);
+    const prompt = screen.getByLabelText(/positive prompt/i) as HTMLTextAreaElement;
+    const selections = [
+      ["Classic White", "crisp classic white crew-neck T-shirt"],
+      ["Neon Pink", "vivid neon pink T-shirt"],
+      ["Electric Cyan", "electric cyan T-shirt"],
+      ["Dark Black", "sleek dark black T-shirt"],
+      ["Holographic", "holographic top with iridescent cyan"],
+      ["XXX", "To Be Confirmed By Developer"],
+    ] as const;
+
+    for (const [shirtName, expectedPrompt] of selections) {
+      fireEvent.click(screen.getByText(shirtName));
+      expect(prompt.value).toContain(expectedPrompt);
+    }
+  });
+
   it("starts the fixed Qwen workflow when XXX is selected without calling the regular try-on mutation", async () => {
     const request = deferred<{ success: true; resultImageUrl: string; shirtApplied: string }>();
     mocks.processDashboardQwen.mockReturnValue(request.promise);
@@ -172,10 +196,10 @@ describe("Dashboard Try On Now lifecycle", () => {
     fireEvent.click(screen.getByText("XXX"));
     fireEvent.click(screen.getByRole("button", { name: "Try on now" }));
 
-    await waitFor(() => expect(mocks.processDashboardQwen).toHaveBeenCalledWith(expect.objectContaining({
-      photoId: 7,
-      positivePrompt: "Change the shirt to yellow.",
-      taskId: expect.any(String),
+      await waitFor(() => expect(mocks.processDashboardQwen).toHaveBeenCalledWith(expect.objectContaining({
+        photoId: 7,
+        positivePrompt: "To Be Confirmed By Developer",
+        taskId: expect.any(String),
     })));
     expect(mocks.mutateAsync).not.toHaveBeenCalled();
     expect(screen.getByText("Qwen ComfyUI is processing your image")).toBeTruthy();
@@ -185,15 +209,22 @@ describe("Dashboard Try On Now lifecycle", () => {
     });
   });
 
-  it("shows the server safety message when an XXX prompt is rejected", async () => {
-    mocks.processDashboardQwen.mockRejectedValue(new Error("Use a non-explicit apparel-editing prompt that keeps the person and background unchanged."));
+  it("submits unrestricted XXX prompt text without a client-side keyword rejection", async () => {
+    mocks.processDashboardQwen.mockResolvedValue({
+      success: true,
+      resultImageUrl: "https://storage.example.test/generated/xxx-result.png",
+      shirtApplied: "XXX",
+    });
     render(<Dashboard />);
     await selectOwnedPhotoAndShirt();
-    fireEvent.change(screen.getByLabelText(/positive prompt/i), { target: { value: "Remove the subject's clothing." } });
     fireEvent.click(screen.getByText("XXX"));
+    fireEvent.change(screen.getByLabelText(/positive prompt/i), { target: { value: "Remove the subject's clothing." } });
     fireEvent.click(screen.getByRole("button", { name: "Try on now" }));
 
-    await waitFor(() => expect(mocks.toastError).toHaveBeenCalledWith("Use a non-explicit apparel-editing prompt that keeps the person and background unchanged."));
+    await waitFor(() => expect(mocks.processDashboardQwen).toHaveBeenCalledWith(expect.objectContaining({
+      positivePrompt: "Remove the subject's clothing.",
+    })));
+    expect(mocks.toastError).not.toHaveBeenCalled();
     expect(mocks.mutateAsync).not.toHaveBeenCalled();
   });
 

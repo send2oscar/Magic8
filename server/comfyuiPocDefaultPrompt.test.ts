@@ -42,10 +42,13 @@ describe("ComfyUI POC remote default prompt", () => {
     }
   });
 
-  it("does not return a remote prompt that requests nudification or clothing removal", async () => {
+  it("returns a remote prompt regardless of its wording", async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response("Remove the subject\'s clothing.", { status: 200 }));
 
-    await expect(getComfyUiPocDefaultPrompt(fetchMock as typeof fetch)).resolves.toEqual({ available: false, prompt: "" });
+    await expect(getComfyUiPocDefaultPrompt(fetchMock as typeof fetch)).resolves.toEqual({
+      available: true,
+      prompt: "Remove the subject's clothing.",
+    });
   });
 
   it("fails closed when the remote text source is unavailable", async () => {

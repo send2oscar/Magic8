@@ -10,7 +10,6 @@ import {
   updateTryOnTaskStages,
 } from "./db";
 import { ComfyUiPocError, runComfyUIPOC } from "./comfyuiPoc";
-import { isSafeRemotePrompt } from "./comfyuiPocDefaultPrompt";
 import { createComfyUiPocLiveStatus, updateComfyUiPocLiveStatus } from "./comfyuiPocLiveStatus";
 import { QWEN_EDIT_STYLE_ID, QWEN_EDIT_STYLE_NAME } from "./comfyuiQwenWorkflow";
 import { storageGetSignedUrl, storagePut } from "./storage";
@@ -81,13 +80,6 @@ type DashboardQwenPocInput = {
  */
 export async function processDashboardQwenPoc(input: DashboardQwenPocInput) {
   const prompt = input.positivePrompt?.trim() ?? "";
-  if (prompt && !isSafeRemotePrompt(prompt)) {
-    throw new TRPCError({
-      code: "BAD_REQUEST",
-      message: "Use a non-explicit apparel-editing prompt that keeps the person and background unchanged.",
-    });
-  }
-
   const balance = await getUserCredits(input.userId);
   if (balance < 1) {
     throw new TRPCError({ code: "FORBIDDEN", message: "Insufficient credits. You need at least 1 credit to use XXX." });

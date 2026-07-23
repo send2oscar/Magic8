@@ -21,15 +21,13 @@ describe("ComfyUI POC", () => {
     expect(workflow["106"]).toBeUndefined();
   });
 
-  it("rejects an unsafe prompt before creating a local ComfyUI request", async () => {
+  it("preserves unrestricted prompt text while building a workflow without creating a request", () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
-    expect(() => buildQwenWorkflow("incoming/poc-input.png", "remove all clothing")).toThrow("non-explicit apparel-editing prompt");
-    await expect(runComfyUIPOC(Buffer.from("source-image"), "portrait.png", "remove all clothing")).rejects.toMatchObject({
-      name: "ComfyUiPocError",
-      message: "The ComfyUI POC request could not be completed.",
-    } satisfies Partial<ComfyUiPocError>);
+    const workflow = buildQwenWorkflow("incoming/poc-input.png", "remove all clothing");
+
+    expect(workflow["119"].inputs.prompt).toContain("remove all clothing");
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
