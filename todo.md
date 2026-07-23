@@ -278,9 +278,12 @@
 - [x] Lock the current Dashboard photo-selection control after Try On Now and show a separate new-photo button that reloads the page without interrupting the running background job.
 - [x] Add and run regression coverage for long-running XXX jobs and the Dashboard new-photo reset control.
 - [x] Keep all timeout, background-finalization, and Dashboard reset changes on direct `http://oscarngan.ddns.net:8188` ComfyUI access; do not re-enable Bridge unless the user explicitly changes this instruction.
-- [ ] After this version is published, create the project-level one-minute Heartbeat for `/api/scheduled/finalize-comfyui` so long-running direct-ComfyUI tasks finalize to Gallery even after the Dashboard reloads.
-- [ ] Repair the deployed direct-ComfyUI Heartbeat route so scheduled POSTs return the finalizer JSON response instead of the single-page application HTML fallback.
-- [ ] Validate a live direct-ComfyUI finalizer Heartbeat run returns a successful structured callback response after redeployment.
+- [x] After this version is published, create the project-level one-minute Heartbeat for `/api/scheduled/finalize-comfyui` so long-running direct-ComfyUI tasks finalize to Gallery even after the Dashboard reloads.
+- [x] Repair the deployed direct-ComfyUI Heartbeat route so scheduled POSTs return the finalizer JSON response instead of the single-page application HTML fallback.
+- [x] Validate a live direct-ComfyUI finalizer Heartbeat run returns a successful structured callback response after redeployment.
 - [x] Verify without changing code whether Start Another New Task renders after Try On Now in the deployed Dashboard and document its actual display condition.
 - [x] Show Use Another Photo immediately when Try On Now begins, regardless of whether direct-ComfyUI submission has received a server acknowledgment.
 - [x] Add and run a Dashboard regression that verifies the reset control is visible while the start request is still unresolved.
+- [x] Normalize filename-derived photo storage keys to ASCII-safe values so uploads with Chinese, Japanese, or other non-ASCII filenames succeed, and add regression coverage.
+- [ ] After the user restarts local ComfyUI, rerun the live direct `system_stats` health check and complete the external integration regression suite.
+- [ ] Keep all direct local-ComfyUI health and integration tests paused until the user explicitly confirms that the local ComfyUI service has restarted.

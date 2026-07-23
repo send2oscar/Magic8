@@ -8,6 +8,7 @@ import { registerStorageProxy } from "./storageProxy";
 import { registerTryOnSourceRelay } from "../tryOnSource";
 import { appRouter } from "../routers";
 import { finalizePendingComfyUiTasks } from "../comfyuiScheduledFinalizer";
+import { createPhotoStorageKey, getPhotoMimeType } from "../photoStorageKey";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 import { sdk } from "./sdk";
@@ -58,27 +59,17 @@ async function startServer() {
       }
       
       const { file: base64Data, filename } = req.body;
-      if (!base64Data || !filename) {
+      if (!base64Data || typeof filename !== "string" || !filename) {
         return res.status(400).json({ error: 'Missing file or filename' });
       }
       
       const buffer = Buffer.from(base64Data, 'base64');
-      
-      let mimeType = 'application/octet-stream';
-      if (filename.endsWith('.jpg') || filename.endsWith('.jpeg')) {
-        mimeType = 'image/jpeg';
-      } else if (filename.endsWith('.png')) {
-        mimeType = 'image/png';
-      } else if (filename.endsWith('.gif')) {
-        mimeType = 'image/gif';
-      } else if (filename.endsWith('.webp')) {
-        mimeType = 'image/webp';
-      }
+      const mimeType = getPhotoMimeType(filename);
       
       const { storagePut } = await import('../storage');
       const { saveUserPhoto } = await import('../db');
       
-      const photoKey = `photos/${user.id}/${Date.now()}-${filename}`;
+      const photoKey = createPhotoStorageKey(user.id, Date.now(), filename);
       const result = await storagePut(photoKey, buffer, mimeType);
       
       if (!result) {

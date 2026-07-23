@@ -16,13 +16,13 @@ POST /api/scheduled/finalize-comfyui
 
 It accepts only verified scheduled callers, checks up to five pending direct-ComfyUI tasks per invocation, and finalizes a task into Gallery when the remote output is ready. The operation is idempotent, so Dashboard polling and scheduled finalization cannot refund the same failed task twice.
 
-The project-level Heartbeat definition has task UID `f7iqX9x2JhjzN7jXe9mCtF`. It is **temporarily paused** while the corrected callback route is republished; resume it after the new release is live:
+The project-level Heartbeat definition has task UID `f7iqX9x2JhjzN7jXe9mCtF`. It is **active** and targets the corrected deployed callback route:
 
 ```bash
 manus-heartbeat resume --task-uid f7iqX9x2JhjzN7jXe9mCtF
 ```
 
-The six-field UTC cron expression runs once per minute. Scheduled callbacks target the deployed application, not the development sandbox. Use `manus-heartbeat logs --task-uid f7iqX9x2JhjzN7jXe9mCtF` to inspect execution history, or `manus-heartbeat update --task-uid f7iqX9x2JhjzN7jXe9mCtF --enable=false` to pause it.
+The six-field UTC cron expression runs once per minute. Scheduled callbacks target the deployed application, not the development sandbox. After publishing the route correction, the live execution at `2026-07-23T16:04:14Z` returned HTTP 200 with `{"ok":true,"checked":4,"finalized":0,"errors":0}`. Use `manus-heartbeat logs --task-uid f7iqX9x2JhjzN7jXe9mCtF` to inspect execution history, or `manus-heartbeat update --task-uid f7iqX9x2JhjzN7jXe9mCtF --enable=false` to pause it.
 
 ## Dashboard behavior
 
