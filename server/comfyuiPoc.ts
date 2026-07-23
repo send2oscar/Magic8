@@ -5,8 +5,8 @@
  * 上傳圖像、執行工作流程、下載結果
  */
 
-import fs from 'fs';
-import path from 'path';
+import * as fs from 'fs';
+import * as path from 'path';
 
 // 使用全局 fetch（Node.js 18+）
 
