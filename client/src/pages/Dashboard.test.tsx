@@ -84,7 +84,7 @@ async function selectOwnedPhotoAndShirt() {
   if (!fileInput) throw new Error("Expected a file input");
   fireEvent.change(fileInput, { target: { files: [file] } });
   await waitFor(() => expect(screen.getByAltText("Selected upload")).toBeTruthy());
-  fireEvent.click(screen.getByText("Neon Pink"));
+  fireEvent.click(screen.getByText("Neon Pink (1 Credit)"));
 }
 
 describe("Dashboard Try On Now lifecycle", () => {
@@ -193,7 +193,7 @@ describe("Dashboard Try On Now lifecycle", () => {
     render(<Dashboard />);
     await selectOwnedPhotoAndShirt();
 
-    fireEvent.click(screen.getByText("XXX"));
+    fireEvent.click(screen.getByText("XXX (10 Credits)"));
     fireEvent.click(screen.getByRole("button", { name: "Try on now" }));
 
       await waitFor(() => expect(mocks.processDashboardQwen).toHaveBeenCalledWith(expect.objectContaining({
@@ -217,7 +217,7 @@ describe("Dashboard Try On Now lifecycle", () => {
     });
     render(<Dashboard />);
     await selectOwnedPhotoAndShirt();
-    fireEvent.click(screen.getByText("XXX"));
+    fireEvent.click(screen.getByText("XXX (10 Credits)"));
     fireEvent.change(screen.getByLabelText(/positive prompt/i), { target: { value: "Remove the subject's clothing." } });
     fireEvent.click(screen.getByRole("button", { name: "Try on now" }));
 
@@ -236,7 +236,7 @@ describe("Dashboard Try On Now lifecycle", () => {
     });
     render(<Dashboard />);
     await selectOwnedPhotoAndShirt();
-    fireEvent.click(screen.getByText("XXX"));
+    fireEvent.click(screen.getByText("XXX (10 Credits)"));
     fireEvent.click(screen.getByRole("button", { name: "Try on now" }));
 
     await waitFor(() => expect(screen.getByText("TRY-ON RESULT")).toBeTruthy());

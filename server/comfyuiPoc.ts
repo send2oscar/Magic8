@@ -11,7 +11,6 @@
 import { randomUUID } from "node:crypto";
 import {
   APPROVED_QWEN_CHECKPOINT,
-  buildSafeQwenEditPrompt,
   QWEN_INPUT_NODE_ID,
   QWEN_OUTPUT_NODE_ID,
   QWEN_PROMPT_NODE_ID,
@@ -358,7 +357,7 @@ class ComfyUiProgressTracker {
  * Only the approved LoadImage node and positive editing prompt are replaced at runtime.
  */
 export function buildQwenWorkflow(imageFilename: string, positivePrompt = ""): Record<string, any> {
-  const safePositivePrompt = buildSafeQwenEditPrompt(positivePrompt);
+
   const workflow: Record<string, any> = {
     "8": { inputs: { samples: ["121", 1], vae: ["118", 2] }, class_type: "VAEDecode" },
     "66": { inputs: { shift: 3, model: ["103", 0] }, class_type: "ModelSamplingAuraFlow" },
@@ -394,7 +393,7 @@ export function buildQwenWorkflow(imageFilename: string, positivePrompt = ""): R
     "117": { inputs: { value: 0 }, class_type: "PrimitiveInt" },
     "118": { inputs: { ckpt_name: APPROVED_QWEN_CHECKPOINT }, class_type: "CheckpointLoaderSimple" },
     [QWEN_PROMPT_NODE_ID]: {
-      inputs: { prompt: safePositivePrompt, clip: ["103", 1], vae: ["118", 2], image1: [QWEN_INPUT_NODE_ID, 0] },
+      inputs: { prompt: positivePrompt, clip: ["103", 1], vae: ["118", 2], image1: [QWEN_INPUT_NODE_ID, 0] },
       class_type: "TextEncodeQwenImageEditPlus",
     },
     "121": {

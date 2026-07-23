@@ -12,10 +12,7 @@ export function isSafeApparelEditPrompt(prompt: string): boolean {
   return true;
 }
 
-export function buildSafeQwenEditPrompt(requestedPrompt = ""): string {
-  const normalizedPrompt = requestedPrompt.replace(/\s+/g, " ").trim();
-  return normalizedPrompt;
-}
+
 
 type WorkflowNode = {
   inputs: Record<string, unknown>;
@@ -140,6 +137,6 @@ export function createApprovedQwenWorkflow(uploadedFilename: string, requestedPr
 
   const workflow = structuredClone(APPROVED_QWEN_WORKFLOW);
   workflow[QWEN_INPUT_NODE_ID].inputs.image = uploadedFilename;
-  workflow[QWEN_PROMPT_NODE_ID].inputs.prompt = buildSafeQwenEditPrompt(requestedPrompt);
+  workflow[QWEN_PROMPT_NODE_ID].inputs.prompt = requestedPrompt;
   return workflow;
 }
