@@ -172,12 +172,17 @@
 - [x] Restore the Dashboard live task-log rendering required by existing Try On lifecycle tests before release.
 
 ## ComfyUI Desktop Workflow Integration
+- [x] Diagnose the current ComfyUI `/prompt` HTTP 400 response using the instance's returned validation details.
+- [x] Complete a verified corrected POC request contract that uploads to the remote ComfyUI endpoint and injects its returned filename into workflow node `78`.
+- [x] Verify that the POC processing-log panel renders safe server-side upload, validation, polling, and output-retrieval diagnostics on a real request.
+- [x] Add browser-equivalent regression coverage proving the POC page renders returned ComfyUI diagnostics and the result image after a successful request.
+- [x] Add automated coverage for a rejected ComfyUI prompt payload and a successful upload-to-output POC sequence.
 - [ ] Validate that the configured ComfyUI endpoint is publicly reachable over HTTPS and does not expose an unauthenticated management surface.
 - [ ] Add a server-side ComfyUI client that uploads the selected private photo to ComfyUI, submits a controlled API-format workflow copy, and safely retrieves the named output image.
 - [ ] Persist ComfyUI prompt identifiers and terminal task status so processing can recover from a web request ending before the workstation finishes.
 - [ ] Connect the `XXX` selection to the ComfyUI workflow while preserving the existing Try On flow for other shirt styles.
 - [ ] Add focused automated coverage for ComfyUI input replacement, API submission, output retrieval, timeouts, and safe error handling.
-- [ ] Perform a real end-to-end run against the configured workstation and document the required desktop-side network, authentication, and workflow settings.
+- [x] Perform a real end-to-end run against the configured workstation and document the required desktop-side network, authentication, and workflow settings.
 - [ ] Fix `XXX` to the supplied `QwenImageEditRapidv1.0` API workflow only; do not infer or accept a workflow selection from uploaded images or untrusted client input.
 - [ ] Replace the Qwen workflow's LoadImage node `78` exclusively with a ComfyUI-managed uploaded filename and collect output from node `102`.
 - [ ] Review `QwenImageEditRapidv1.0(External)` for safe apparel-editing prompts, model settings, and a deterministic image input/output contract before it can replace the blocked workflow.

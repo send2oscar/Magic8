@@ -1,387 +1,380 @@
 /**
  * ComfyUI POC Service
- * 
- * 連接到本地 ComfyUI 實例 (http://oscarngan.ddns.net:8188)
- * 上傳圖像、執行工作流程、下載結果
+ *
+ * The web server cannot give a remote ComfyUI instance a path on its own
+ * filesystem. The required contract is therefore:
+ *   1. Upload bytes to ComfyUI's /upload/image endpoint.
+ *   2. Put the returned ComfyUI-managed input filename in LoadImage node 78.
+ *   3. Submit the fixed Qwen workflow and retrieve its named output.
  */
 
-import * as fs from 'fs';
-import * as path from 'path';
+import { randomUUID } from "node:crypto";
 
-// 使用全局 fetch（Node.js 18+）
+const COMFYUI_URL = "http://oscarngan.ddns.net:8188";
+const MAX_INPUT_BYTES = 25 * 1024 * 1024;
+const DEFAULT_EDIT_PROMPT =
+  "Replace only the person's shirt with a realistic, well-fitting shirt. Preserve the person's identity, face, body proportions, pose, background, lighting, camera framing, and image quality.";
 
-const COMFYUI_URL = 'http://oscarngan.ddns.net:8188';
-const TEMP_DIR = path.join(process.cwd(), 'temp_comfyui');
+export type ComfyUiPocDiagnostic = {
+  key: "upload" | "submission" | "queued" | "polling" | "output" | "download" | "failed";
+  label: string;
+  detail?: string;
+};
 
-// 確保臨時目錄存在
-if (!fs.existsSync(TEMP_DIR)) {
-  fs.mkdirSync(TEMP_DIR, { recursive: true });
+export class ComfyUiPocError extends Error {
+  constructor(
+    message: string,
+    public readonly diagnostics: ComfyUiPocDiagnostic[],
+  ) {
+    super(message);
+    this.name = "ComfyUiPocError";
+  }
+}
+
+type ComfyUiUploadResponse = {
+  name?: string;
+  subfolder?: string;
+  type?: string;
+};
+
+type ComfyUiPromptResponse = {
+  prompt_id?: string;
+  error?: unknown;
+  node_errors?: Record<string, unknown>;
+};
+
+type ComfyUiOutputImage = {
+  filename?: string;
+  subfolder?: string;
+  type?: string;
+};
+
+type ComfyUiHistoryItem = {
+  outputs?: Record<string, unknown>;
+  status?: {
+    status_str?: string;
+    completed?: boolean;
+    messages?: unknown[];
+  };
+};
+
+type UploadedComfyUiImage = {
+  inputFilename: string;
+  type: string;
+};
+
+export type ComfyUiPocResult = {
+  success: true;
+  promptId: string;
+  outputBuffer: Buffer;
+  outputMimeType: "image/jpeg" | "image/png" | "image/webp";
+  diagnostics: ComfyUiPocDiagnostic[];
+  message: string;
+};
+
+function diagnostic(
+  diagnostics: ComfyUiPocDiagnostic[],
+  key: ComfyUiPocDiagnostic["key"],
+  label: string,
+  detail?: string,
+) {
+  diagnostics.push({ key, label, ...(detail ? { detail } : {}) });
+  console.info("[ComfyUI POC]", label, detail ? { detail } : "");
+}
+
+function imageMimeType(filename: string): "image/jpeg" | "image/png" | "image/webp" {
+  const extension = filename.split(".").pop()?.toLowerCase();
+  if (extension === "png") return "image/png";
+  if (extension === "webp") return "image/webp";
+  return "image/jpeg";
+}
+
+function outputMimeType(contentType: string | null): "image/jpeg" | "image/png" | "image/webp" {
+  const normalized = contentType?.split(";", 1)[0]?.trim().toLowerCase();
+  if (normalized === "image/png") return "image/png";
+  if (normalized === "image/webp") return "image/webp";
+  return "image/jpeg";
+}
+
+function generatedInputFilename(originalFilename: string) {
+  const extension = originalFilename.split(".").pop()?.toLowerCase();
+  const safeExtension = extension === "png" || extension === "webp" || extension === "jpeg" || extension === "jpg"
+    ? extension === "jpeg" ? "jpg" : extension
+    : "jpg";
+  return `shirt-changer-poc-${Date.now()}-${randomUUID()}.${safeExtension}`;
+}
+
+function getValidationMessage(payload: ComfyUiPromptResponse): string {
+  const nodeErrors = payload.node_errors;
+  if (!nodeErrors || !Object.keys(nodeErrors).length) {
+    return "ComfyUI rejected the fixed workflow before it entered the queue.";
+  }
+
+  const [nodeId, rawNodeError] = Object.entries(nodeErrors)[0] ?? [];
+  const nodeError = rawNodeError as {
+    errors?: Array<{ extra_info?: { input_name?: string }; details?: string }>;
+  };
+  const firstError = nodeError?.errors?.[0];
+  const inputName = firstError?.extra_info?.input_name;
+  const rawDetail = firstError?.details?.toLowerCase() ?? "";
+
+  if (nodeId === "78" || rawDetail.includes("invalid image file")) {
+    return "ComfyUI could not validate the uploaded input image. The POC must use the filename returned by ComfyUI's upload endpoint.";
+  }
+
+  return `ComfyUI rejected the fixed workflow at node ${nodeId ?? "unknown"}${inputName ? ` (${inputName})` : ""}.`;
+}
+
+function getExecutionFailureMessage(messages: unknown[] | undefined): string {
+  for (const message of messages ?? []) {
+    if (!Array.isArray(message)) continue;
+    const kind = typeof message[0] === "string" ? message[0] : "";
+    const details = message[1] as { node_id?: unknown; node_type?: unknown } | undefined;
+    if (kind === "execution_error" || kind === "execution_interrupted") {
+      const nodeId = typeof details?.node_id === "string" || typeof details?.node_id === "number"
+        ? String(details.node_id)
+        : "an unknown";
+      const nodeType = typeof details?.node_type === "string" ? ` (${details.node_type})` : "";
+      return `ComfyUI stopped while executing node ${nodeId}${nodeType}.`;
+    }
+  }
+  return "The remote ComfyUI workflow finished without a successful result.";
+}
+
+async function readJson<T>(response: Response): Promise<T | null> {
+  try {
+    return (await response.json()) as T;
+  } catch {
+    return null;
+  }
 }
 
 /**
- * Qwen 工作流程模板
- * 基於 QwenImageEditRapidv1.0(External).json
+ * Fixed API-format QwenImageEditRapidv1.0(External) workflow.
+ * Only LoadImage node 78 and the positive editing prompt are replaced at runtime.
  */
-function buildQwenWorkflow(imagePath: string, positivePrompt: string = ''): Record<string, any> {
-  return {
-    "8": {
-      "inputs": {
-        "samples": ["121", 1],
-        "vae": ["118", 2]
-      },
-      "class_type": "VAEDecode",
-      "_meta": { "title": "VAE Decode" }
-    },
-    "66": {
-      "inputs": {
-        "shift": 3,
-        "model": ["103", 0]
-      },
-      "class_type": "ModelSamplingAuraFlow",
-      "_meta": { "title": "ModelSamplingAuraFlow" }
-    },
-    "75": {
-      "inputs": {
-        "strength": 1,
-        "pre_cfg": false,
-        "model": ["66", 0]
-      },
-      "class_type": "CFGNorm",
-      "_meta": { "title": "CFGNorm" }
-    },
+export function buildQwenWorkflow(imageFilename: string, positivePrompt = ""): Record<string, any> {
+  const workflow: Record<string, any> = {
+    "8": { inputs: { samples: ["121", 1], vae: ["118", 2] }, class_type: "VAEDecode" },
+    "66": { inputs: { shift: 3, model: ["103", 0] }, class_type: "ModelSamplingAuraFlow" },
+    "75": { inputs: { strength: 1, pre_cfg: false, model: ["66", 0] }, class_type: "CFGNorm" },
     "77": {
-      "inputs": {
-        "prompt": "ugly, blurry, distorted, artifacts, bad, wrong, low quality, anime, digital art, semirealistic, cartoon, manga, drawing, fake, unreal, large breasts",
-        "clip": ["103", 1],
-        "vae": ["118", 2],
-        "image": ["78", 0]
+      inputs: {
+        prompt: "ugly, blurry, distorted, artifacts, bad, wrong, low quality, anime, digital art, semirealistic, cartoon, manga, drawing, fake, unreal, large breasts",
+        clip: ["103", 1],
+        vae: ["118", 2],
+        image: ["78", 0],
       },
-      "class_type": "TextEncodeQwenImageEdit",
-      "_meta": { "title": "TextEncodeQwenImageEdit" }
+      class_type: "TextEncodeQwenImageEdit",
     },
-    "78": {
-      "inputs": {
-        "image": imagePath
-      },
-      "class_type": "LoadImage",
-      "_meta": { "title": "Load Image" }
-    },
-    "88": {
-      "inputs": {
-        "pixels": ["93", 0],
-        "vae": ["118", 2]
-      },
-      "class_type": "VAEEncode",
-      "_meta": { "title": "VAE Encode" }
-    },
+    "78": { inputs: { image: imageFilename }, class_type: "LoadImage" },
+    "88": { inputs: { pixels: ["93", 0], vae: ["118", 2] }, class_type: "VAEEncode" },
     "93": {
-      "inputs": {
-        "upscale_method": "lanczos",
-        "megapixels": 1,
-        "resolution_steps": 1,
-        "image": ["78", 0]
-      },
-      "class_type": "ImageScaleToTotalPixels",
-      "_meta": { "title": "Scale Image to Total Pixels" }
+      inputs: { upscale_method: "lanczos", megapixels: 1, resolution_steps: 1, image: ["78", 0] },
+      class_type: "ImageScaleToTotalPixels",
     },
-    "102": {
-      "inputs": {
-        "filename": "%time_%basemodelname_%seed",
-        "path": "qwen_edit/%date",
-        "extension": "jpg",
-        "lossless_webp": false,
-        "quality_jpeg_or_webp": 100,
-        "optimize_png": false,
-        "embed_workflow": true,
-        "save_workflow_as_json": false,
-        "counter": 0,
-        "time_format": "%Y-%m-%d-%H%M%S",
-        "show_preview": true,
-        "images": ["8", 0],
-        "metadata": ["106", 0]
-      },
-      "class_type": "Image Saver Simple",
-      "_meta": { "title": "Image Saver Simple" }
-    },
+    // The imported template's Image Saver Simple metadata chain expects a
+    // GUI-only extra_pnginfo.workflow document. SaveImage is API-compatible.
+    "102": { inputs: { filename_prefix: "shirt-changer-poc", images: ["8", 0] }, class_type: "SaveImage" },
     "103": {
-      "inputs": {
-        "PowerLoraLoaderHeaderWidget": { "type": "PowerLoraLoaderHeaderWidget" },
+      inputs: {
+        PowerLoraLoaderHeaderWidget: { type: "PowerLoraLoaderHeaderWidget" },
         "➕ Add Lora": "",
-        "model": ["118", 0],
-        "clip": ["118", 1]
+        model: ["118", 0],
+        clip: ["118", 1],
       },
-      "class_type": "Power Lora Loader (rgthree)",
-      "_meta": { "title": "Power Lora Loader (rgthree)" }
+      class_type: "Power Lora Loader (rgthree)",
     },
-    "104": {
-      "inputs": {
-        "id": 0,
-        "widget_name": "ckpt_name",
-        "return_all": false,
-        "node_title": "",
-        "allowed_float_decimals": 2,
-        "any_input": ["118", 0]
-      },
-      "class_type": "WidgetToString",
-      "_meta": { "title": "Widget To String" }
-    },
-    "106": {
-      "inputs": {
-        "modelname": ["104", 0],
-        "positive": "unknown",
-        "negative": "unknown",
-        "width": 512,
-        "height": 512,
-        "seed_value": ["117", 0],
-        "steps": ["115", 0],
-        "cfg": 1,
-        "sampler_name": "euler",
-        "scheduler_name": "beta57",
-        "denoise": 1,
-        "clip_skip": 0,
-        "additional_hashes": "",
-        "download_civitai_data": true,
-        "easy_remix": true,
-        "custom": ""
-      },
-      "class_type": "Image Saver Metadata",
-      "_meta": { "title": "Image Saver Metadata" }
-    },
-    "115": {
-      "inputs": { "value": 8 },
-      "class_type": "INTConstant",
-      "_meta": { "title": "Steps" }
-    },
-    "117": {
-      "inputs": { "value": 0 },
-      "class_type": "PrimitiveInt",
-      "_meta": { "title": "Seed" }
-    },
-    "118": {
-      "inputs": { "ckpt_name": "Qwen-Rapid-AIO-v11.4.safetensors" },
-      "class_type": "CheckpointLoaderSimple",
-      "_meta": { "title": "Load Checkpoint" }
-    },
+    "115": { inputs: { value: 8 }, class_type: "INTConstant" },
+    "117": { inputs: { value: 0 }, class_type: "PrimitiveInt" },
+    "118": { inputs: { ckpt_name: "Qwen-Rapid-AIO-v11.4.safetensors" }, class_type: "CheckpointLoaderSimple" },
     "119": {
-      "inputs": {
-        "prompt": positivePrompt || "",
-        "clip": ["103", 1],
-        "vae": ["118", 2],
-        "image1": ["78", 0]
-      },
-      "class_type": "TextEncodeQwenImageEditPlus",
-      "_meta": { "title": "TextEncodeQwenImageEditPlus" }
+      inputs: { prompt: positivePrompt.trim() || DEFAULT_EDIT_PROMPT, clip: ["103", 1], vae: ["118", 2], image1: ["78", 0] },
+      class_type: "TextEncodeQwenImageEditPlus",
     },
     "121": {
-      "inputs": {
-        "eta": 0.5,
-        "sampler_name": "linear/euler",
-        "scheduler": "simple",
-        "steps": ["115", 0],
-        "steps_to_run": -1,
-        "denoise": 1,
-        "cfg": 1,
-        "seed": ["117", 0],
-        "sampler_mode": "standard",
-        "bongmath": true,
-        "model": ["75", 0],
-        "positive": ["119", 0],
-        "negative": ["77", 0],
-        "latent_image": ["88", 0]
+      inputs: {
+        eta: 0.5, sampler_name: "linear/euler", scheduler: "simple", steps: ["115", 0], steps_to_run: -1,
+        denoise: 1, cfg: 1, seed: ["117", 0], sampler_mode: "standard", bongmath: true,
+        model: ["75", 0], positive: ["119", 0], negative: ["77", 0], latent_image: ["88", 0],
       },
-      "class_type": "ClownsharKSampler_Beta",
-      "_meta": { "title": "ClownsharKSampler" }
-    }
+      class_type: "ClownsharKSampler_Beta",
+    },
   };
+
+  return workflow;
 }
 
-/**
- * 提交工作流程到 ComfyUI
- */
-export async function submitComfyUIWorkflow(
-  workflow: Record<string, any>
-): Promise<{ prompt_id: string }> {
-  console.log('[ComfyUI POC] 提交工作流程到', COMFYUI_URL);
+export async function uploadImageToComfyUI(
+  imageBuffer: Buffer,
+  imageName: string,
+  diagnostics: ComfyUiPocDiagnostic[],
+): Promise<UploadedComfyUiImage> {
+  if (!imageBuffer.length) {
+    throw new ComfyUiPocError("The selected image is empty.", diagnostics);
+  }
+  if (imageBuffer.length > MAX_INPUT_BYTES) {
+    throw new ComfyUiPocError("The selected image exceeds the 25 MB POC limit.", diagnostics);
+  }
 
+  const remoteFilename = generatedInputFilename(imageName);
+  const mimeType = imageMimeType(remoteFilename);
+  // Send a sized multipart body rather than a chunked FormData stream. This is
+  // more compatible with the remote ComfyUI Desktop/AioHTTP upload endpoint.
+  const boundary = `----shirtChangerPoc${randomUUID().replaceAll("-", "")}`;
+  const multipartPrefix = Buffer.from(
+    `--${boundary}\r\nContent-Disposition: form-data; name="image"; filename="${remoteFilename}"\r\nContent-Type: ${mimeType}\r\n\r\n`,
+    "utf8",
+  );
+  const multipartSuffix = Buffer.from(`\r\n--${boundary}--\r\n`, "utf8");
+  const multipartBody = Buffer.concat([multipartPrefix, imageBuffer, multipartSuffix]);
+
+  diagnostic(diagnostics, "upload", "Uploading the source image to the remote ComfyUI input directory.");
+  let response: Response;
+  try {
+    response = await fetch(`${COMFYUI_URL}/upload/image`, {
+      method: "POST",
+      headers: {
+        "Content-Type": `multipart/form-data; boundary=${boundary}`,
+        "Content-Length": String(multipartBody.length),
+      },
+      body: multipartBody,
+    });
+  } catch (error) {
+    console.error("[ComfyUI POC] Image upload request failed", error);
+    diagnostic(diagnostics, "failed", "The application server could not reach ComfyUI's image-upload endpoint.");
+    throw new ComfyUiPocError("The application server could not upload the source image to ComfyUI.", diagnostics);
+  }
+  const payload = await readJson<ComfyUiUploadResponse>(response);
+
+  if (!response.ok || !payload?.name) {
+    diagnostic(diagnostics, "failed", "The remote ComfyUI instance rejected the source-image upload.", `HTTP ${response.status}`);
+    throw new ComfyUiPocError("ComfyUI could not accept the uploaded image.", diagnostics);
+  }
+
+  const inputFilename = [payload.subfolder, payload.name].filter(Boolean).join("/");
+  diagnostic(diagnostics, "upload", "ComfyUI stored the source image and returned an input filename.");
+  return { inputFilename, type: payload.type || "input" };
+}
+
+export async function submitComfyUIWorkflow(
+  workflow: Record<string, any>,
+  diagnostics: ComfyUiPocDiagnostic[],
+): Promise<{ promptId: string }> {
+  diagnostic(diagnostics, "submission", "Submitting the fixed Qwen workflow to ComfyUI for validation.");
   const response = await fetch(`${COMFYUI_URL}/prompt`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ prompt: workflow }),
   });
+  const payload = await readJson<ComfyUiPromptResponse>(response);
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error('[ComfyUI POC] 提交失敗:', response.statusText, errorText);
-    throw new Error(`ComfyUI 提交失敗: ${response.statusText}`);
+  if (!response.ok || !payload?.prompt_id) {
+    const message = payload ? getValidationMessage(payload) : "ComfyUI returned an unreadable validation response.";
+    diagnostic(diagnostics, "failed", message, `HTTP ${response.status}`);
+    throw new ComfyUiPocError(message, diagnostics);
   }
 
-  const result = (await response.json()) as { prompt_id: string };
-  console.log('[ComfyUI POC] 工作流程已提交，prompt_id:', result.prompt_id);
-  return result;
+  diagnostic(diagnostics, "queued", "ComfyUI validated the workflow and queued the edit request.");
+  return { promptId: payload.prompt_id };
 }
 
-/**
- * 輪詢 ComfyUI 獲取結果
- */
 export async function pollComfyUIResult(
   promptId: string,
-  maxWaitTime: number = 300000 // 5 分鐘
-): Promise<{
-  status: string;
-  outputs: Record<string, any>;
-}> {
-  const startTime = Date.now();
-  const pollInterval = 1000; // 每 1 秒輪詢一次
+  diagnostics: ComfyUiPocDiagnostic[],
+  maxWaitTime = 160_000,
+): Promise<Record<string, unknown>> {
+  const startedAt = Date.now();
+  let loggedPolling = false;
 
-  while (Date.now() - startTime < maxWaitTime) {
-    try {
-      const response = await fetch(`${COMFYUI_URL}/history/${promptId}`);
-
-      if (!response.ok) {
-        console.log('[ComfyUI POC] 等待結果中...', promptId);
-        await new Promise(resolve => setTimeout(resolve, pollInterval));
-        continue;
+  while (Date.now() - startedAt < maxWaitTime) {
+    const response = await fetch(`${COMFYUI_URL}/history/${encodeURIComponent(promptId)}`);
+    if (response.ok) {
+      const history = await readJson<Record<string, ComfyUiHistoryItem>>(response);
+      const item = history?.[promptId];
+      if (item) {
+        const status = item.status?.status_str;
+        if (status && status !== "success") {
+          const message = getExecutionFailureMessage(item.status?.messages);
+          diagnostic(diagnostics, "failed", message);
+          throw new ComfyUiPocError(message, diagnostics);
+        }
+        diagnostic(diagnostics, "output", "ComfyUI completed the workflow and reported its output nodes.");
+        return item.outputs ?? {};
       }
-
-      const history = (await response.json()) as Record<string, any>;
-
-      if (history[promptId]) {
-        console.log('[ComfyUI POC] 結果已準備好');
-        return {
-          status: 'completed',
-          outputs: history[promptId].outputs || {},
-        };
-      }
-
-      console.log('[ComfyUI POC] 等待結果中...', promptId);
-      await new Promise(resolve => setTimeout(resolve, pollInterval));
-    } catch (error) {
-      console.error('[ComfyUI POC] 輪詢錯誤:', error);
-      await new Promise(resolve => setTimeout(resolve, pollInterval));
     }
+
+    if (!loggedPolling) {
+      diagnostic(diagnostics, "polling", "Waiting for the remote ComfyUI worker to finish the Qwen edit.");
+      loggedPolling = true;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
   }
 
-  throw new Error('ComfyUI 處理超時');
+  diagnostic(diagnostics, "failed", "The ComfyUI POC did not finish within the 160-second request window.");
+  throw new ComfyUiPocError("ComfyUI processing timed out. Please retry after confirming the workstation is idle.", diagnostics);
 }
 
-/**
- * 下載 ComfyUI 輸出文件
- */
+function findOutputImage(outputs: Record<string, unknown>): ComfyUiOutputImage | null {
+  for (const nodeOutput of Object.values(outputs)) {
+    if (!nodeOutput || typeof nodeOutput !== "object") continue;
+    const images = (nodeOutput as { images?: unknown }).images;
+    if (!Array.isArray(images)) continue;
+    const first = images[0] as ComfyUiOutputImage | undefined;
+    if (first?.filename) return first;
+  }
+  return null;
+}
+
 export async function downloadComfyUIOutput(
-  filename: string,
-  subfolder: string = ''
-): Promise<Buffer> {
-  const url = subfolder
-    ? `${COMFYUI_URL}/view?filename=${filename}&subfolder=${subfolder}`
-    : `${COMFYUI_URL}/view?filename=${filename}`;
+  image: ComfyUiOutputImage,
+  diagnostics: ComfyUiPocDiagnostic[],
+): Promise<{ buffer: Buffer; mimeType: "image/jpeg" | "image/png" | "image/webp" }> {
+  const query = new URLSearchParams({ filename: image.filename ?? "", type: image.type || "output" });
+  if (image.subfolder) query.set("subfolder", image.subfolder);
 
-  console.log('[ComfyUI POC] 下載輸出:', url);
-
-  const response = await fetch(url);
-
+  diagnostic(diagnostics, "download", "Downloading the named result image from ComfyUI.");
+  const response = await fetch(`${COMFYUI_URL}/view?${query.toString()}`);
   if (!response.ok) {
-    throw new Error(`下載失敗: ${response.statusText}`);
+    diagnostic(diagnostics, "failed", "ComfyUI completed the workflow, but the named output image could not be downloaded.", `HTTP ${response.status}`);
+    throw new ComfyUiPocError("ComfyUI output retrieval failed.", diagnostics);
   }
 
-  return Buffer.from(await response.arrayBuffer());
+  return { buffer: Buffer.from(await response.arrayBuffer()), mimeType: outputMimeType(response.headers.get("content-type")) };
 }
 
-/**
- * 完整的 POC 工作流程
- */
 export async function runComfyUIPOC(
   imageBuffer: Buffer,
   imageName: string,
-  positivePrompt: string = ''
-): Promise<{
-  success: boolean;
-  promptId: string;
-  outputPath: string;
-  message: string;
-}> {
+  positivePrompt = "",
+): Promise<ComfyUiPocResult> {
+  const diagnostics: ComfyUiPocDiagnostic[] = [];
+
   try {
-    console.log('[ComfyUI POC] 開始 POC 工作流程');
+    const uploadedImage = await uploadImageToComfyUI(imageBuffer, imageName, diagnostics);
+    const workflow = buildQwenWorkflow(uploadedImage.inputFilename, positivePrompt);
+    const { promptId } = await submitComfyUIWorkflow(workflow, diagnostics);
+    const outputs = await pollComfyUIResult(promptId, diagnostics);
+    const outputImage = findOutputImage(outputs);
 
-    // 1. 保存上傳的圖像到臨時目錄
-    const inputImagePath = path.join(TEMP_DIR, imageName);
-    fs.writeFileSync(inputImagePath, imageBuffer);
-    console.log('[ComfyUI POC] 圖像已保存:', inputImagePath);
-
-    // 2. 構建工作流程
-    const workflow = buildQwenWorkflow(inputImagePath, positivePrompt);
-    console.log('[ComfyUI POC] 工作流程已構建');
-
-    // 3. 提交到 ComfyUI
-    const { prompt_id } = await submitComfyUIWorkflow(workflow);
-
-    // 4. 輪詢結果
-    const result = await pollComfyUIResult(prompt_id);
-    console.log('[ComfyUI POC] 結果:', result);
-
-    // 5. 下載輸出
-    // 搜索所有包含 images 的節點
-    const outputs = result.outputs as Record<string, any>;
-    let outputFilename = '';
-    let outputSubfolder = '';
-
-    console.log('[ComfyUI POC] 搜索輸出節點，可用節點:', Object.keys(outputs));
-
-    // 遍歷所有輸出節點查找圖像
-    for (const [nodeId, nodeOutput] of Object.entries(outputs)) {
-      console.log(`[ComfyUI POC] 檢查節點 ${nodeId}:`, nodeOutput);
-      
-      if (nodeOutput && typeof nodeOutput === 'object' && 'images' in nodeOutput) {
-        const images = (nodeOutput as any).images;
-        if (Array.isArray(images) && images.length > 0) {
-          const imageOutput = images[0];
-          outputFilename = imageOutput.filename;
-          outputSubfolder = imageOutput.subfolder || '';
-          console.log(`[ComfyUI POC] 在節點 ${nodeId} 找到輸出圖像:`, outputFilename);
-          break;
-        }
-      }
+    if (!outputImage) {
+      diagnostic(diagnostics, "failed", "The workflow completed but did not report an image output.");
+      throw new ComfyUiPocError("ComfyUI did not return a downloadable output image.", diagnostics);
     }
 
-    if (!outputFilename) {
-      console.error('[ComfyUI POC] 未找到輸出文件，完整輸出:', JSON.stringify(outputs, null, 2));
-      throw new Error(`未找到輸出文件。可用節點: ${Object.keys(outputs).join(', ')}`);
-    }
-
-    const outputBuffer = await downloadComfyUIOutput(outputFilename, outputSubfolder);
-
-    // 6. 保存結果
-    const outputPath = path.join(TEMP_DIR, `output_${Date.now()}_${outputFilename}`);
-    fs.writeFileSync(outputPath, outputBuffer);
-    console.log('[ComfyUI POC] 結果已保存:', outputPath);
-
+    const output = await downloadComfyUIOutput(outputImage, diagnostics);
+    diagnostic(diagnostics, "output", "The edited image was retrieved successfully.");
     return {
       success: true,
-      promptId: prompt_id,
-      outputPath,
-      message: '處理成功',
+      promptId,
+      outputBuffer: output.buffer,
+      outputMimeType: output.mimeType,
+      diagnostics,
+      message: "ComfyUI completed the POC image edit.",
     };
   } catch (error) {
-    console.error('[ComfyUI POC] 錯誤:', error);
-    throw error;
-  }
-}
-
-/**
- * 清理臨時文件
- */
-export function cleanupTempFiles(): void {
-  try {
-    if (fs.existsSync(TEMP_DIR)) {
-      const files = fs.readdirSync(TEMP_DIR);
-      files.forEach(file => {
-        const filePath = path.join(TEMP_DIR, file);
-        fs.unlinkSync(filePath);
-      });
-      console.log('[ComfyUI POC] 臨時文件已清理');
-    }
-  } catch (error) {
-    console.error('[ComfyUI POC] 清理失敗:', error);
+    if (error instanceof ComfyUiPocError) throw error;
+    diagnostic(diagnostics, "failed", "The server could not complete the ComfyUI POC request.");
+    throw new ComfyUiPocError("The ComfyUI POC request could not be completed.", diagnostics);
   }
 }

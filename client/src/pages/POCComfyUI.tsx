@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -15,6 +15,7 @@ export function POCComfyUI() {
   const [result, setResult] = useState<{
     promptId: string;
     outputBase64: string;
+    outputMimeType: string;
   } | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -30,14 +31,26 @@ export function POCComfyUI() {
     setLogs(prev => [...prev, `[${timestamp}] ${message}`]);
   };
 
+  const addServerDiagnostics = (diagnostics: Array<{ label: string; detail?: string }>) => {
+    diagnostics.forEach((entry) => addLog(`${entry.label}${entry.detail ? ` (${entry.detail})` : ''}`));
+  };
+
   const processImageMutation = trpc.comfyuiPoc.processImage.useMutation({
     onSuccess: (data) => {
+      addServerDiagnostics(data.diagnostics);
+      if (!data.success) {
+        addLog(`❌ ${data.message}`);
+        toast.error(data.message);
+        setIsProcessing(false);
+        return;
+      }
       setResult({
         promptId: data.promptId,
         outputBase64: data.outputBase64,
+        outputMimeType: data.outputMimeType,
       });
-      addLog('✅ Image processed successfully!');
-      toast.success('Image processed successfully!');
+      addLog('✅ ComfyUI POC completed successfully.');
+      toast.success('ComfyUI POC completed successfully.');
       setIsProcessing(false);
     },
     onError: (error) => {
@@ -65,14 +78,19 @@ export function POCComfyUI() {
 
     setIsProcessing(true);
     setLogs([]);
-    addLog('🚀 Starting image processing...');
-    addLog(`📤 Uploading image: ${selectedFile.name}`);
+    addLog('Starting ComfyUI POC request.');
+    addLog(`Preparing selected image: ${selectedFile.name}`);
 
     try {
       const reader = new FileReader();
       reader.onload = (e) => {
         const base64String = (e.target?.result as string).split(',')[1];
-        addLog('🔄 Submitting to ComfyUI...');
+        if (!base64String) {
+          addLog('❌ The selected file could not be encoded.');
+          setIsProcessing(false);
+          return;
+        }
+        addLog('Sending the image to the application server.');
         processImageMutation.mutate({
           imageBase64: base64String,
           imageName: selectedFile.name,
@@ -91,8 +109,9 @@ export function POCComfyUI() {
     if (!result) return;
 
     const link = document.createElement('a');
-    link.href = `data:image/jpeg;base64,${result.outputBase64}`;
-    link.download = `comfyui-output-${result.promptId}.jpg`;
+    link.href = `data:${result.outputMimeType};base64,${result.outputBase64}`;
+    const extension = result.outputMimeType === 'image/png' ? 'png' : result.outputMimeType === 'image/webp' ? 'webp' : 'jpg';
+    link.download = `comfyui-output-${result.promptId}.${extension}`;
     link.click();
     addLog('💾 Result downloaded');
   };
@@ -107,7 +126,7 @@ export function POCComfyUI() {
       <div className="max-w-6xl mx-auto">
         <div className="mb-8">
           <h1 className="text-4xl font-bold text-white mb-2">ComfyUI POC</h1>
-          <p className="text-slate-400">Test image upload and processing with local ComfyUI instance</p>
+          <p className="text-slate-400">Test a remote image upload, Qwen edit request, and result download.</p>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -178,7 +197,7 @@ export function POCComfyUI() {
                 <>
                   <div className="bg-slate-700 rounded-lg p-4">
                     <img
-                      src={`data:image/jpeg;base64,${result.outputBase64}`}
+                      src={`data:${result.outputMimeType};base64,${result.outputBase64}`}
                       alt="Processed result"
                       className="w-full rounded-lg"
                     />
@@ -225,8 +244,8 @@ export function POCComfyUI() {
             <CardHeader>
               <div className="flex justify-between items-center">
                 <div>
-                  <CardTitle className="text-white">Live Logs</CardTitle>
-                  <CardDescription>Real-time processing logs</CardDescription>
+                  <CardTitle className="text-white">Processing Log</CardTitle>
+                  <CardDescription>Safe server-side diagnostics returned for this POC request</CardDescription>
                 </div>
                 <Button
                   onClick={clearLogs}
@@ -263,7 +282,7 @@ export function POCComfyUI() {
           <CardContent className="space-y-3 text-slate-300 text-sm">
             <div>
               <p className="font-semibold text-white mb-1">ComfyUI Instance:</p>
-              <p>http://oscarngan.ddns.net:8188</p>
+              <p>Remote ComfyUI instance (connected server-to-server)</p>
             </div>
             <div>
               <p className="font-semibold text-white mb-1">Workflow:</p>
@@ -272,13 +291,11 @@ export function POCComfyUI() {
             <div>
               <p className="font-semibold text-white mb-1">Process:</p>
               <ol className="list-decimal list-inside space-y-1">
-                <li>Upload image to temporary directory</li>
-                <li>Build Qwen workflow JSON</li>
-                <li>Submit to ComfyUI /prompt endpoint</li>
-                <li>Poll /history endpoint for results</li>
-                <li>Search for output images in all nodes</li>
-                <li>Download processed image</li>
-                <li>Return result to frontend</li>
+                <li>Upload the source image to ComfyUI’s input directory</li>
+                <li>Insert ComfyUI’s returned filename into Qwen workflow node 78</li>
+                <li>Submit the fixed Qwen workflow to the prompt endpoint</li>
+                <li>Poll the history endpoint until the job completes</li>
+                <li>Download the named output image and return it to this page</li>
               </ol>
             </div>
           </CardContent>

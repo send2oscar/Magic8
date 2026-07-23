@@ -46,7 +46,7 @@ import {
   refreshLocalBridgeQwenTask,
   startLocalBridgeQwenTask,
 } from "./localBridgeQwenTask";
-import { runComfyUIPOC, cleanupTempFiles } from "./comfyuiPoc";
+import { ComfyUiPocError, runComfyUIPOC } from "./comfyuiPoc";
 
 // Shirt styles available for try-on
 const SHIRT_STYLES = [
@@ -409,43 +409,47 @@ export const appRouter = router({
     processImage: protectedProcedure
       .input(
         z.object({
-          imageBase64: z.string(),
-          imageName: z.string(),
-          positivePrompt: z.string().optional(),
+          imageBase64: z.string().min(4).max(35 * 1024 * 1024),
+          imageName: z.string().min(1).max(255),
+          positivePrompt: z.string().max(2_000).optional(),
         })
       )
-      .mutation(async ({ ctx, input }) => {
+      .mutation(async ({ input }) => {
         try {
-          console.log('[ComfyUI POC] Processing image:', input.imageName);
-          
           const imageBuffer = Buffer.from(input.imageBase64, 'base64');
-          
+          if (!imageBuffer.length || imageBuffer.length > 25 * 1024 * 1024) {
+            throw new TRPCError({ code: "BAD_REQUEST", message: "Select a non-empty image no larger than 25 MB for this POC." });
+          }
+
           const result = await runComfyUIPOC(
             imageBuffer,
             input.imageName,
             input.positivePrompt || ''
           );
-          
-          console.log('[ComfyUI POC] Success:', result);
-          
-          const fs = require('fs');
-          const outputBuffer = fs.readFileSync(result.outputPath);
-          const outputBase64 = outputBuffer.toString('base64');
-          
-          cleanupTempFiles();
-          
+
           return {
             success: true,
             promptId: result.promptId,
-            outputBase64,
+            outputBase64: result.outputBuffer.toString("base64"),
+            outputMimeType: result.outputMimeType,
+            diagnostics: result.diagnostics,
             message: result.message,
-          };
+          } as const;
         } catch (error) {
-          console.error('[ComfyUI POC] Error:', error);
-          cleanupTempFiles();
+          if (error instanceof ComfyUiPocError) {
+            return {
+              success: false,
+              promptId: null,
+              outputBase64: null,
+              outputMimeType: null,
+              diagnostics: error.diagnostics,
+              message: error.message,
+            } as const;
+          }
+          console.error("[ComfyUI POC] Unexpected error", error);
           throw new TRPCError({
-            code: 'INTERNAL_SERVER_ERROR',
-            message: `ComfyUI processing failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+            code: "INTERNAL_SERVER_ERROR",
+            message: "The ComfyUI POC could not be started. Please retry the request.",
           });
         }
       }),
