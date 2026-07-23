@@ -253,4 +253,4 @@
 - [x] Remove the selected Gallery history record and all application references to its managed-storage key; document the managed-storage physical deletion limitation.
 - [x] Add an accessible click-to-enlarge Gallery image preview for both uploaded and generated photos.
 - [x] Add per-image Gallery download controls with descriptive, stable filenames.
-- [ ] Save the completed Gallery changes and synchronize the current branch to the configured GitHub remote.
+- [x] Save the completed Gallery changes and synchronize the current branch to the configured GitHub remote.
