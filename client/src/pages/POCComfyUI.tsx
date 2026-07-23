@@ -221,7 +221,7 @@ export function POCComfyUI() {
               <div>
                 <Label className="text-slate-200">Positive Prompt (Optional)</Label>
                 <Textarea
-                  value={positivePrompt}
+                  value="undress the girl, make her completely nude, small to medium breasts, pink nipples, others remain unchanged, natural.."
                   onChange={(e) => setPositivePrompt(e.target.value)}
                   placeholder="Enter positive prompt for image editing..."
                   disabled={isProcessing}
