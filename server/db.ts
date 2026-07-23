@@ -415,6 +415,35 @@ export async function getUserGallery(userId: number, limit: number = 60) {
   }
 }
 
+/**
+ * Delete a Gallery history entry only when it belongs to the signed-in user.
+ * Removing this record also removes the application's reference to any
+ * generated-result storage key. The managed storage adapter has no physical
+ * object-delete API, so the underlying object cannot be removed here.
+ */
+export async function deleteUserGalleryEntry(userId: number, historyId: number): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+
+  try {
+    const ownedEntry = await db
+      .select({ id: tryOnHistory.id })
+      .from(tryOnHistory)
+      .where(and(eq(tryOnHistory.id, historyId), eq(tryOnHistory.userId, userId)))
+      .limit(1);
+
+    if (!ownedEntry[0]) return false;
+
+    await db
+      .delete(tryOnHistory)
+      .where(and(eq(tryOnHistory.id, historyId), eq(tryOnHistory.userId, userId)));
+    return true;
+  } catch (error) {
+    console.error("[Database] Failed to delete user gallery entry:", error);
+    return false;
+  }
+}
+
 /** Return the minimal profile fields needed by the restricted admin workspace. */
 export async function getAdminUsers(limit: number = 100) {
   const db = await getDb();

@@ -2,11 +2,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { TrpcContext } from "./_core/context";
 
 const mocks = vi.hoisted(() => ({
-  getUserCredits: vi.fn(), deductCredits: vi.fn(), addCredits: vi.fn(), saveUserPhoto: vi.fn(), getUserPhotos: vi.fn(), saveTryOnHistory: vi.fn(), getTryOnHistory: vi.fn(), updateTryOnHistory: vi.fn(), updateTryOnTaskStages: vi.fn(), getActiveTryOnTask: vi.fn(), getUserGallery: vi.fn(), getAdminUsers: vi.fn(), getAdminUserProfile: vi.fn(),
+  getUserCredits: vi.fn(), deductCredits: vi.fn(), addCredits: vi.fn(), saveUserPhoto: vi.fn(), getUserPhotos: vi.fn(), saveTryOnHistory: vi.fn(), getTryOnHistory: vi.fn(), updateTryOnHistory: vi.fn(), updateTryOnTaskStages: vi.fn(), getActiveTryOnTask: vi.fn(), getUserGallery: vi.fn(), deleteUserGalleryEntry: vi.fn(), getAdminUsers: vi.fn(), getAdminUserProfile: vi.fn(),
 }));
 
 vi.mock("./db", () => ({
-  getUserCredits: mocks.getUserCredits, deductCredits: mocks.deductCredits, addCredits: mocks.addCredits, saveUserPhoto: mocks.saveUserPhoto, getUserPhotos: mocks.getUserPhotos, saveTryOnHistory: mocks.saveTryOnHistory, getTryOnHistory: mocks.getTryOnHistory, updateTryOnHistory: mocks.updateTryOnHistory, updateTryOnTaskStages: mocks.updateTryOnTaskStages, getActiveTryOnTask: mocks.getActiveTryOnTask, getUserGallery: mocks.getUserGallery, getAdminUsers: mocks.getAdminUsers, getAdminUserProfile: mocks.getAdminUserProfile,
+  getUserCredits: mocks.getUserCredits, deductCredits: mocks.deductCredits, addCredits: mocks.addCredits, saveUserPhoto: mocks.saveUserPhoto, getUserPhotos: mocks.getUserPhotos, saveTryOnHistory: mocks.saveTryOnHistory, getTryOnHistory: mocks.getTryOnHistory, updateTryOnHistory: mocks.updateTryOnHistory, updateTryOnTaskStages: mocks.updateTryOnTaskStages, getActiveTryOnTask: mocks.getActiveTryOnTask, getUserGallery: mocks.getUserGallery, deleteUserGalleryEntry: mocks.deleteUserGalleryEntry, getAdminUsers: mocks.getAdminUsers, getAdminUserProfile: mocks.getAdminUserProfile,
 }));
 
 import { appRouter } from "./routers";
@@ -31,6 +31,20 @@ describe("private gallery and administrator access", () => {
 
   it("rejects an unauthenticated gallery request", async () => {
     await expect(appRouter.createCaller(context(null)).gallery.list()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+  });
+
+  it("removes only the signed-in user's selected Gallery item", async () => {
+    mocks.deleteUserGalleryEntry.mockResolvedValue(true);
+
+    await expect(appRouter.createCaller(context(1)).gallery.remove({ historyId: 101 })).resolves.toEqual({ success: true });
+    expect(mocks.deleteUserGalleryEntry).toHaveBeenCalledWith(1, 101);
+  });
+
+  it("does not reveal ownership details when an item cannot be deleted", async () => {
+    mocks.deleteUserGalleryEntry.mockResolvedValue(false);
+
+    await expect(appRouter.createCaller(context(1)).gallery.remove({ historyId: 202 })).rejects.toMatchObject({ code: "NOT_FOUND" });
+    expect(mocks.deleteUserGalleryEntry).toHaveBeenCalledWith(1, 202);
   });
 
   it("rejects administrator data without the dedicated password session", async () => {

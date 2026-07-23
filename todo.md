@@ -249,3 +249,8 @@
 - [x] In the Dashboard page, add the corresponding credit will be deducted after the option [e.g. Classic White --> Class White (1 Credit)]. Only the XXX option deducts 10 credits, and other 5 options deducts 1 credit.
 - [x] Add a border, with a background color of the preview window of the result photo (after generation).
 - [x] Fix XXX option to deduct 10 credits instead of 1 credit
+- [x] Add an owner-authorized Gallery delete action with an explicit confirmation dialog and immediate list refresh.
+- [x] Remove the selected Gallery history record and all application references to its managed-storage key; document the managed-storage physical deletion limitation.
+- [x] Add an accessible click-to-enlarge Gallery image preview for both uploaded and generated photos.
+- [x] Add per-image Gallery download controls with descriptive, stable filenames.
+- [ ] Save the completed Gallery changes and synchronize the current branch to the configured GitHub remote.

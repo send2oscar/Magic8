@@ -15,6 +15,7 @@ import {
   getAdminUserProfile,
   getAdminUsers,
   getUserGallery,
+  deleteUserGalleryEntry,
   updateTryOnHistory,
   updateTryOnTaskStages,
   getActiveTryOnTask,
@@ -269,6 +270,15 @@ export const appRouter = router({
 
   gallery: router({
     list: protectedProcedure.query(({ ctx }) => getUserGallery(ctx.user.id)),
+    remove: protectedProcedure
+      .input(z.object({ historyId: z.number().int().positive() }))
+      .mutation(async ({ ctx, input }) => {
+        const deleted = await deleteUserGalleryEntry(ctx.user.id, input.historyId);
+        if (!deleted) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "This Gallery item could not be found or no longer belongs to your account." });
+        }
+        return { success: true } as const;
+      }),
   }),
 
   admin: router({
