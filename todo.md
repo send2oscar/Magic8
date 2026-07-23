@@ -203,9 +203,11 @@
 - [ ] Persist ComfyUI prompt identifiers and terminal task status so processing can recover from a web request ending before the workstation finishes.
 - [x] Connect the `XXX` selection to the ComfyUI workflow while preserving the existing Try On flow for other shirt styles.
 - [ ] Add focused automated coverage for ComfyUI input replacement, API submission, output retrieval, timeouts, and safe error handling.
+- [x] Audit and lock the inline `XXX` integration to the approved Qwen workflow without accepting client-controlled workflow selection.
+- [x] Verify with mocks that only node `78` receives the managed upload filename and node `102` supplies the retrieved output.
 - [x] Perform a real end-to-end run against the configured workstation and document the required desktop-side network, authentication, and workflow settings.
-- [ ] Fix `XXX` to the supplied `QwenImageEditRapidv1.0` API workflow only; do not infer or accept a workflow selection from uploaded images or untrusted client input.
-- [ ] Replace the Qwen workflow's LoadImage node `78` exclusively with a ComfyUI-managed uploaded filename and collect output from node `102`.
+- [x] Fix `XXX` to the supplied `QwenImageEditRapidv1.0` API workflow only; do not infer or accept a workflow selection from uploaded images or untrusted client input.
+- [x] Replace the Qwen workflow's LoadImage node `78` exclusively with a ComfyUI-managed uploaded filename and collect output from node `102`.
 - [ ] Review `QwenImageEditRapidv1.0(External)` for safe apparel-editing prompts, model settings, and a deterministic image input/output contract before it can replace the blocked workflow.
 - [ ] Re-audit the newly re-uploaded `QwenImageEditRapidv1.0(External)` contents before any connection is enabled, including its checkpoint, LoRA configuration, positive prompt, and image-output node.
 - [ ] Verify the latest re-uploaded workflow uses a non-adult checkpoint and an explicit clothing-preserving Qwen edit prompt before enabling `XXX`.

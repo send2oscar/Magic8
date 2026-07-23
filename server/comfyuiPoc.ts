@@ -9,6 +9,7 @@
  */
 
 import { randomUUID } from "node:crypto";
+import { QWEN_INPUT_NODE_ID, QWEN_OUTPUT_NODE_ID, QWEN_PROMPT_NODE_ID } from "./comfyuiQwenWorkflow";
 
 const COMFYUI_URL = "http://oscarngan.ddns.net:8188";
 const MAX_INPUT_BYTES = 25 * 1024 * 1024;
@@ -133,7 +134,7 @@ function getValidationMessage(payload: ComfyUiPromptResponse): string {
   const inputName = firstError?.extra_info?.input_name;
   const rawDetail = firstError?.details?.toLowerCase() ?? "";
 
-  if (nodeId === "78" || rawDetail.includes("invalid image file")) {
+  if (nodeId === QWEN_INPUT_NODE_ID || rawDetail.includes("invalid image file")) {
     return "ComfyUI could not validate the uploaded input image. The POC must use the filename returned by ComfyUI's upload endpoint.";
   }
 
@@ -173,15 +174,15 @@ function numericValue(value: unknown): number | null {
 }
 
 const POC_NODE_LABELS: Record<string, string> = {
-  "78": "Loading the uploaded source image.",
+  [QWEN_INPUT_NODE_ID]: "Loading the uploaded source image.",
   "93": "Preparing the source image for the Qwen workflow.",
   "103": "Preparing the Qwen model configuration.",
   "77": "Preparing the negative edit guidance.",
-  "119": "Preparing the shirt-edit guidance.",
+  [QWEN_PROMPT_NODE_ID]: "Preparing the shirt-edit guidance.",
   "88": "Encoding the source image.",
   "121": "Generating the edited image.",
   "8": "Decoding the generated image.",
-  "102": "Saving the edited result.",
+  [QWEN_OUTPUT_NODE_ID]: "Saving the edited result.",
 };
 
 class ComfyUiProgressTracker {
@@ -345,7 +346,7 @@ class ComfyUiProgressTracker {
 
 /**
  * Fixed API-format QwenImageEditRapidv1.0(External) workflow.
- * Only LoadImage node 78 and the positive editing prompt are replaced at runtime.
+ * Only the approved LoadImage node and positive editing prompt are replaced at runtime.
  */
 export function buildQwenWorkflow(imageFilename: string, positivePrompt = ""): Record<string, any> {
   const workflow: Record<string, any> = {
@@ -357,19 +358,19 @@ export function buildQwenWorkflow(imageFilename: string, positivePrompt = ""): R
         prompt: "ugly, blurry, distorted, artifacts, bad, wrong, low quality, anime, digital art, semirealistic, cartoon, manga, drawing, fake, unreal, large breasts",
         clip: ["103", 1],
         vae: ["118", 2],
-        image: ["78", 0],
+        image: [QWEN_INPUT_NODE_ID, 0],
       },
       class_type: "TextEncodeQwenImageEdit",
     },
-    "78": { inputs: { image: imageFilename }, class_type: "LoadImage" },
+    [QWEN_INPUT_NODE_ID]: { inputs: { image: imageFilename }, class_type: "LoadImage" },
     "88": { inputs: { pixels: ["93", 0], vae: ["118", 2] }, class_type: "VAEEncode" },
     "93": {
-      inputs: { upscale_method: "lanczos", megapixels: 1, resolution_steps: 1, image: ["78", 0] },
+      inputs: { upscale_method: "lanczos", megapixels: 1, resolution_steps: 1, image: [QWEN_INPUT_NODE_ID, 0] },
       class_type: "ImageScaleToTotalPixels",
     },
     // The imported template's Image Saver Simple metadata chain expects a
     // GUI-only extra_pnginfo.workflow document. SaveImage is API-compatible.
-    "102": { inputs: { filename_prefix: "shirt-changer-poc", images: ["8", 0] }, class_type: "SaveImage" },
+    [QWEN_OUTPUT_NODE_ID]: { inputs: { filename_prefix: "shirt-changer-poc", images: ["8", 0] }, class_type: "SaveImage" },
     "103": {
       inputs: {
         PowerLoraLoaderHeaderWidget: { type: "PowerLoraLoaderHeaderWidget" },
@@ -382,15 +383,15 @@ export function buildQwenWorkflow(imageFilename: string, positivePrompt = ""): R
     "115": { inputs: { value: 8 }, class_type: "INTConstant" },
     "117": { inputs: { value: 0 }, class_type: "PrimitiveInt" },
     "118": { inputs: { ckpt_name: "Qwen-Rapid-AIO-v11.4.safetensors" }, class_type: "CheckpointLoaderSimple" },
-    "119": {
-      inputs: { prompt: positivePrompt.trim() || DEFAULT_EDIT_PROMPT, clip: ["103", 1], vae: ["118", 2], image1: ["78", 0] },
+    [QWEN_PROMPT_NODE_ID]: {
+      inputs: { prompt: positivePrompt.trim() || DEFAULT_EDIT_PROMPT, clip: ["103", 1], vae: ["118", 2], image1: [QWEN_INPUT_NODE_ID, 0] },
       class_type: "TextEncodeQwenImageEditPlus",
     },
     "121": {
       inputs: {
         eta: 0.5, sampler_name: "linear/euler", scheduler: "simple", steps: ["115", 0], steps_to_run: -1,
         denoise: 1, cfg: 1, seed: ["117", 0], sampler_mode: "standard", bongmath: true,
-        model: ["75", 0], positive: ["119", 0], negative: ["77", 0], latent_image: ["88", 0],
+        model: ["75", 0], positive: [QWEN_PROMPT_NODE_ID, 0], negative: ["77", 0], latent_image: ["88", 0],
       },
       class_type: "ClownsharKSampler_Beta",
     },
@@ -511,14 +512,12 @@ export async function pollComfyUIResult(
 }
 
 function findOutputImage(outputs: Record<string, unknown>): ComfyUiOutputImage | null {
-  for (const nodeOutput of Object.values(outputs)) {
-    if (!nodeOutput || typeof nodeOutput !== "object") continue;
-    const images = (nodeOutput as { images?: unknown }).images;
-    if (!Array.isArray(images)) continue;
-    const first = images[0] as ComfyUiOutputImage | undefined;
-    if (first?.filename) return first;
-  }
-  return null;
+  const nodeOutput = outputs[QWEN_OUTPUT_NODE_ID];
+  if (!nodeOutput || typeof nodeOutput !== "object") return null;
+  const images = (nodeOutput as { images?: unknown }).images;
+  if (!Array.isArray(images)) return null;
+  const first = images[0] as ComfyUiOutputImage | undefined;
+  return first?.filename ? first : null;
 }
 
 export async function downloadComfyUIOutput(

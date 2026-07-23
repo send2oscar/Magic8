@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildQwenWorkflow, ComfyUiPocError, runComfyUIPOC } from "./comfyuiPoc";
+import { QWEN_INPUT_NODE_ID, QWEN_OUTPUT_NODE_ID } from "./comfyuiQwenWorkflow";
 
 const encoder = new TextEncoder();
 
@@ -11,9 +12,9 @@ describe("ComfyUI POC", () => {
   it("replaces only LoadImage node 78 with the ComfyUI-managed input filename", () => {
     const workflow = buildQwenWorkflow("incoming/poc-input.png", "put a blue shirt on the person");
 
-    expect(workflow["78"].inputs.image).toBe("incoming/poc-input.png");
+    expect(workflow[QWEN_INPUT_NODE_ID].inputs.image).toBe("incoming/poc-input.png");
     expect(workflow["119"].inputs.prompt).toBe("put a blue shirt on the person");
-    expect(workflow["102"].class_type).toBe("SaveImage");
+    expect(workflow[QWEN_OUTPUT_NODE_ID].class_type).toBe("SaveImage");
     expect(workflow["104"]).toBeUndefined();
     expect(workflow["106"]).toBeUndefined();
   });
@@ -40,7 +41,8 @@ describe("ComfyUI POC", () => {
     expect(fetchMock.mock.calls[0]?.[0]).toContain("/upload/image");
 
     const submittedPayload = JSON.parse(fetchMock.mock.calls[1]?.[1]?.body as string);
-    expect(submittedPayload.prompt["78"].inputs.image).toBe("incoming/poc-input.png");
+    expect(submittedPayload.prompt[QWEN_INPUT_NODE_ID].inputs.image).toBe("incoming/poc-input.png");
+    expect(submittedPayload.prompt[QWEN_OUTPUT_NODE_ID].class_type).toBe("SaveImage");
     expect(submittedPayload.client_id).toBe("poc-test-client");
     expect(fetchMock.mock.calls[3]?.[0]).toContain("filename=edited.png");
   });
@@ -62,6 +64,25 @@ describe("ComfyUI POC", () => {
       name: "ComfyUiPocError",
       message: "ComfyUI could not validate the uploaded input image. The POC must use the filename returned by ComfyUI's upload endpoint.",
     } satisfies Partial<ComfyUiPocError>);
+  });
+
+  it("accepts an image only from the approved Qwen output node", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ name: "poc-input.png", type: "input" }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ prompt_id: "prompt-wrong-output" }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        "prompt-wrong-output": {
+          status: { status_str: "success", completed: true },
+          outputs: { "999": { images: [{ filename: "unapproved.png", type: "output" }] } },
+        },
+      }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(runComfyUIPOC(Buffer.from("source-image"), "portrait.png")).rejects.toMatchObject({
+      name: "ComfyUiPocError",
+      message: "ComfyUI did not return a downloadable output image.",
+    } satisfies Partial<ComfyUiPocError>);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
   it("emits sampler progress and an estimated remaining time from a ComfyUI progress-state event", async () => {
