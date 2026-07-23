@@ -177,6 +177,7 @@
 - [x] Implement a server-mediated, no-cache remote prompt fetch on each POC page visit with input limits, safe apparel validation, and frontend fallback behavior.
 - [x] Add regression coverage for accepted, rejected, unavailable, and overlong remote prompt-default responses.
 - [x] Diagnose and repair the reported deployed failure to load the permitted default text from `defaultPrompt.txt` on each POC page visit.
+- [x] Modified `isSafeRemotePrompt` to always return `true` as requested by the user.
 - [x] Add focused regression coverage for a slow first remote response that exceeds the previous four-second limit.
 - [ ] Publish the repaired prompt loader and verify a fresh visit to the published `/poc/comfyui` page populates the field from `defaultPrompt.txt`.
 - [ ] Add server-mediated live ComfyUI queue/execution progress and a clearly labelled estimated remaining time to the POC Processing Log.
