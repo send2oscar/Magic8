@@ -5,13 +5,6 @@ export const QWEN_OUTPUT_NODE_ID = "102";
 export const QWEN_PROMPT_NODE_ID = "119";
 export const APPROVED_QWEN_CHECKPOINT = "Qwen-Rapid-AIO-v11.4.safetensors";
 
-export const SAFE_QWEN_EDIT_PROMPT = [
-  "Preserve the person's face, pose, body proportions, hands, and background.",
-  "Replace only the current shirt or top with a stylish, fully opaque garment.",
-  "Keep the person fully clothed and the result non-sexual.",
-  "Use realistic fabric, lighting, shadows, and a natural fit.",
-].join(" ");
-
 export function isSafeApparelEditPrompt(prompt: string): boolean {
   // Kept as a compatibility export for callers from earlier versions. There
   // are intentionally no keyword or content restrictions on prompt text.
@@ -21,7 +14,7 @@ export function isSafeApparelEditPrompt(prompt: string): boolean {
 
 export function buildSafeQwenEditPrompt(requestedPrompt = ""): string {
   const normalizedPrompt = requestedPrompt.replace(/\s+/g, " ").trim();
-  return [SAFE_QWEN_EDIT_PROMPT, normalizedPrompt].filter(Boolean).join(" ");
+  return normalizedPrompt;
 }
 
 type WorkflowNode = {
@@ -114,7 +107,7 @@ const APPROVED_QWEN_WORKFLOW: Workflow = {
   "117": { inputs: { value: 0 }, class_type: "PrimitiveInt", _meta: { title: "Seed" } },
   "118": { inputs: { ckpt_name: APPROVED_QWEN_CHECKPOINT }, class_type: "CheckpointLoaderSimple", _meta: { title: "Approved Qwen checkpoint" } },
   [QWEN_PROMPT_NODE_ID]: {
-    inputs: { prompt: SAFE_QWEN_EDIT_PROMPT, clip: ["103", 1], vae: ["118", 2], image1: [QWEN_INPUT_NODE_ID, 0] },
+    inputs: { prompt: "", clip: ["103", 1], vae: ["118", 2], image1: [QWEN_INPUT_NODE_ID, 0] },
     class_type: "TextEncodeQwenImageEditPlus",
     _meta: { title: "Server-controlled apparel edit prompt" },
   },

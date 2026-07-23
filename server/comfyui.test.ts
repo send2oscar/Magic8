@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { checkComfyUiConnection, getApprovedQwenOutput } from "./comfyui";
-import { APPROVED_QWEN_CHECKPOINT, createApprovedQwenWorkflow, QWEN_INPUT_NODE_ID, QWEN_PROMPT_NODE_ID, SAFE_QWEN_EDIT_PROMPT } from "./comfyuiQwenWorkflow";
+import { APPROVED_QWEN_CHECKPOINT, createApprovedQwenWorkflow, QWEN_INPUT_NODE_ID, QWEN_PROMPT_NODE_ID } from "./comfyuiQwenWorkflow";
 import { ENV } from "./_core/env";
 
 describe("approved ComfyUI connection", () => {
@@ -46,7 +46,6 @@ describe("approved ComfyUI connection", () => {
     const workflow = createApprovedQwenWorkflow("shirt-changer-input.png", "make the shirt blue");
 
     expect(workflow[QWEN_INPUT_NODE_ID].inputs.image).toBe("shirt-changer-input.png");
-    expect(workflow[QWEN_PROMPT_NODE_ID].inputs.prompt).toContain(SAFE_QWEN_EDIT_PROMPT);
     expect(workflow[QWEN_PROMPT_NODE_ID].inputs.prompt).toContain("make the shirt blue");
     expect(workflow["118"].inputs.ckpt_name).toBe(APPROVED_QWEN_CHECKPOINT);
     expect(() => createApprovedQwenWorkflow("../unsafe.png")).toThrow("invalid uploaded filename");

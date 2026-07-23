@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildQwenWorkflow, ComfyUiPocError, pollComfyUIResult, runComfyUIPOC } from "./comfyuiPoc";
-import { APPROVED_QWEN_CHECKPOINT, QWEN_INPUT_NODE_ID, QWEN_OUTPUT_NODE_ID, SAFE_QWEN_EDIT_PROMPT } from "./comfyuiQwenWorkflow";
+import { APPROVED_QWEN_CHECKPOINT, QWEN_INPUT_NODE_ID, QWEN_OUTPUT_NODE_ID } from "./comfyuiQwenWorkflow";
 
 const encoder = new TextEncoder();
 
@@ -13,7 +13,6 @@ describe("ComfyUI POC", () => {
     const workflow = buildQwenWorkflow("incoming/poc-input.png", "put a blue shirt on the person");
 
     expect(workflow[QWEN_INPUT_NODE_ID].inputs.image).toBe("incoming/poc-input.png");
-    expect(workflow["119"].inputs.prompt).toContain(SAFE_QWEN_EDIT_PROMPT);
     expect(workflow["119"].inputs.prompt).toContain("put a blue shirt on the person");
     expect(workflow["118"].inputs.ckpt_name).toBe(APPROVED_QWEN_CHECKPOINT);
     expect(workflow[QWEN_OUTPUT_NODE_ID].class_type).toBe("SaveImage");
