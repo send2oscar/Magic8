@@ -17,7 +17,7 @@ function formatEstimatedTime(seconds: number) {
 
 const DEMO_PHOTO_URL = '/manus-storage/demo_person_31d5a68a.jpg';
 const QWEN_EDIT_STYLE_ID = "qwen-image-edit-rapid";
-const IDLE_COMFYUI_TASK_ID = "00000000-0000-4000-8000-000000000000";
+const IDLE_QWEN_TASK_ID = 1;
 const SHIRT_PROMPTS: Record<string, string> = {
   "classic-white": "Change the current shirt to a crisp classic white crew-neck T-shirt. Preserve the person's face, pose, hands, body proportions, and background.",
   "neon-pink": "Change the current shirt to a vivid neon pink T-shirt with realistic fabric texture and lighting. Preserve the person's face, pose, hands, body proportions, and background.",
@@ -58,8 +58,10 @@ export default function Dashboard() {
   const [tryOnStartedAt, setTryOnStartedAt] = useState<number | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [positivePrompt, setPositivePrompt] = useState("");
-  const [activeComfyUiTaskId, setActiveComfyUiTaskId] = useState<string | null>(null);
+  const [activeQwenTaskId, setActiveQwenTaskId] = useState<number | null>(null);
+  const [backgroundQwenError, setBackgroundQwenError] = useState<string | null>(null);
   const hasAppliedDefaultPrompt = useRef(false);
+  const notifiedTerminalQwenTaskId = useRef<number | null>(null);
 
   // tRPC queries and mutations
   const creditsQuery = trpc.credits.getBalance.useQuery();
@@ -67,12 +69,12 @@ export default function Dashboard() {
   const shirtsQuery = trpc.shirts.list.useQuery();
   const tryOnMutation = trpc.tryOn.process.useMutation();
   const defaultPromptQuery = trpc.comfyuiPoc.defaultPrompt.useQuery(undefined, { refetchOnWindowFocus: false });
-  const processDashboardQwenMutation = trpc.comfyuiPoc.processDashboardQwen.useMutation();
-  const comfyUiLiveStatusQuery = trpc.comfyuiPoc.getLiveStatus.useQuery(
-    { taskId: activeComfyUiTaskId ?? IDLE_COMFYUI_TASK_ID },
+  const startQwenEditMutation = trpc.comfyui.startQwenEdit.useMutation();
+  const qwenEditStatusQuery = trpc.comfyui.qwenEditStatus.useQuery(
+    { taskId: activeQwenTaskId ?? IDLE_QWEN_TASK_ID },
     {
-      enabled: activeComfyUiTaskId !== null,
-      refetchInterval: activeComfyUiTaskId !== null ? 1_000 : false,
+      enabled: activeQwenTaskId !== null,
+      refetchInterval: activeQwenTaskId !== null ? 5_000 : false,
       refetchOnWindowFocus: false,
     },
   );
@@ -111,6 +113,32 @@ export default function Dashboard() {
     hasAppliedDefaultPrompt.current = true;
     if (defaultPromptQuery.data?.prompt) setPositivePrompt(defaultPromptQuery.data.prompt);
   }, [defaultPromptQuery.data?.prompt, defaultPromptQuery.isLoading, selectedShirt]);
+
+  useEffect(() => {
+    const taskStatus = qwenEditStatusQuery.data;
+    if (
+      activeQwenTaskId === null ||
+      !taskStatus ||
+      (taskStatus.status !== "success" && taskStatus.status !== "failed") ||
+      notifiedTerminalQwenTaskId.current === activeQwenTaskId
+    ) return;
+
+    notifiedTerminalQwenTaskId.current = activeQwenTaskId;
+    setActiveQwenTaskId(null);
+    setLocalTaskStages([]);
+    void creditsQuery.refetch();
+    void photosQuery.refetch();
+
+    if (taskStatus.status === "success") {
+      setBackgroundQwenError(null);
+      toast.success("Your photo is ready. Please view in the Gallery.");
+      return;
+    }
+
+    const message = taskStatus.message || "The XXX edit was not completed. Your 10 credits have been returned.";
+    setBackgroundQwenError(message);
+    toast.error(message);
+  }, [activeQwenTaskId, creditsQuery, photosQuery, qwenEditStatusQuery.data]);
 
   if (loading) {
     return (
@@ -229,12 +257,19 @@ export default function Dashboard() {
 
     if (tryOnInFlight.current) return;
 
-    if ((creditsQuery.data?.balance || 0) < 1) {
-      toast.error("Insufficient credits. You need at least 1 credit to try on a shirt.");
+    const isQwenEdit = selectedShirt === QWEN_EDIT_STYLE_ID;
+    const requiredCredits = isQwenEdit ? 10 : 1;
+
+    if ((creditsQuery.data?.balance || 0) < requiredCredits) {
+      toast.error(`Insufficient credits. You need at least ${requiredCredits} credits to try on ${isQwenEdit ? "XXX" : "a shirt"}.`);
       return;
     }
 
-    const isQwenEdit = selectedShirt === QWEN_EDIT_STYLE_ID;
+    if (isQwenEdit && activeQwenTaskId !== null) {
+      toast.error("An XXX task is already processing in the background. You may continue with the other shirt styles.");
+      return;
+    }
+
     tryOnInFlight.current = true;
     setIsTryingOn(true);
     setLocalTaskStages([
@@ -243,30 +278,19 @@ export default function Dashboard() {
     ]);
     try {
       if (isQwenEdit) {
-        const taskId = crypto.randomUUID();
-        setActiveComfyUiTaskId(taskId);
         setLocalTaskStages([
           { key: "request_sent", label: "XXX request sent", state: "completed", timestamp: Date.now() },
-          { key: "qwen_processing", label: "Qwen ComfyUI is processing your image", state: "active", timestamp: Date.now() },
+          { key: "bridge_queue", label: "Waiting for the local Qwen workstation", state: "active", detail: "The paired workstation will collect this task shortly.", timestamp: Date.now() },
         ]);
-        const result = await processDashboardQwenMutation.mutateAsync({
-          taskId,
+        const result = await startQwenEditMutation.mutateAsync({
           photoId: selectedPhoto.id,
-          positivePrompt: positivePrompt.trim() || undefined,
+          positivePrompt,
         });
-        if (!result.success) {
-          toast.error(result.message);
-          return;
-        }
-        setTryOnProgress(100);
-        setResultData({
-          resultImageUrl: result.resultImageUrl,
-          shirtApplied: result.shirtApplied,
-          savedToGallery: true,
-        });
-        setShowResult(true);
-        await Promise.all([creditsQuery.refetch(), photosQuery.refetch()]);
-        toast.success("XXX edit completed and saved to your gallery.");
+        notifiedTerminalQwenTaskId.current = null;
+        setBackgroundQwenError(null);
+        setActiveQwenTaskId(result.taskId);
+        await creditsQuery.refetch();
+        toast.success("Your image will be ready in the Gallery. You may continue with other photo and shirt style.");
         return;
       }
 
@@ -286,32 +310,24 @@ export default function Dashboard() {
       toast.error(error?.message || "Failed to process try-on");
       console.error(error);
     } finally {
-      setActiveComfyUiTaskId(null);
       setIsTryingOn(false);
-      setLocalTaskStages([]);
+      if (!isQwenEdit) setLocalTaskStages([]);
       tryOnInFlight.current = false;
     }
   };
 
-  const liveTaskStages: LiveTaskStage[] = comfyUiLiveStatusQuery.data?.events?.length
-    ? comfyUiLiveStatusQuery.data.events.map((event): LiveTaskStage => ({
-      key: `comfyui-${event.id}`,
-      label: event.label,
-      state: event.label === comfyUiLiveStatusQuery.data?.label
-        ? comfyUiLiveStatusQuery.data?.phase === "failed"
-          ? "error"
-          : comfyUiLiveStatusQuery.data?.phase === "completed"
-            ? "completed"
-            : "active"
-        : "completed",
-      timestamp: event.at,
-    }))
-    : localTaskStages;
-  const liveProgress = activeComfyUiTaskId && comfyUiLiveStatusQuery.data?.percent !== null && comfyUiLiveStatusQuery.data?.percent !== undefined
-    ? comfyUiLiveStatusQuery.data.percent
-    : tryOnProgress;
-  const liveProgressLabel = activeComfyUiTaskId && comfyUiLiveStatusQuery.data?.label
-    ? comfyUiLiveStatusQuery.data.label
+  const isBackgroundQwenTask = activeQwenTaskId !== null;
+  const hasVisibleTask = isTryingOn || isBackgroundQwenTask;
+  const qwenTaskStatus = qwenEditStatusQuery.data;
+  const qwenTaskStages = qwenTaskStatus && "stages" in qwenTaskStatus ? qwenTaskStatus.stages : undefined;
+  const qwenTaskMessage = qwenTaskStatus && "message" in qwenTaskStatus ? qwenTaskStatus.message : undefined;
+  const qwenEstimatedSecondsRemaining = qwenTaskStatus && "estimatedSecondsRemaining" in qwenTaskStatus
+    ? qwenTaskStatus.estimatedSecondsRemaining
+    : undefined;
+  const liveTaskStages: LiveTaskStage[] = isBackgroundQwenTask && qwenTaskStages?.length ? qwenTaskStages : localTaskStages;
+  const liveProgress = tryOnProgress;
+  const liveProgressLabel = isBackgroundQwenTask
+    ? qwenEditStatusQuery.isFetching ? "Checking XXX background task" : "XXX processing in background"
     : getTryOnProgressLabel(liveProgress);
 
   return (
@@ -442,7 +458,6 @@ export default function Dashboard() {
                     id="positive-prompt"
                     value={positivePrompt}
                     onChange={(event) => setPositivePrompt(event.target.value)}
-                    maxLength={2000}
                     placeholder="e.g. Change the shirt to yellow; keep the person and background unchanged."
                     className="min-h-24 resize-y border-accent/40 bg-background/50 text-foreground focus-visible:ring-secondary"
                   />
@@ -475,21 +490,14 @@ export default function Dashboard() {
                     {isTryingOn ? `${liveProgressLabel} • ${liveProgress}%` : "TRY ON NOW"}
                   </span>
                 </Button>
-                {isTryingOn && (
+                {hasVisibleTask && (
                   <div className="space-y-4 rounded border border-accent/40 bg-background/40 p-4" aria-live="polite">
                     <div className="flex items-center justify-between gap-3">
                       <p className="text-sm font-bold neon-cyan">LIVE TASK LOG</p>
-                      {activeComfyUiTaskId ? (
+                      {isBackgroundQwenTask ? (
                         <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                          {comfyUiLiveStatusQuery.data?.percent !== null && comfyUiLiveStatusQuery.data?.percent !== undefined && (
-                            <span>Progress: {comfyUiLiveStatusQuery.data.percent}%</span>
-                          )}
-                          {comfyUiLiveStatusQuery.data?.estimatedSecondsRemaining !== null && comfyUiLiveStatusQuery.data?.estimatedSecondsRemaining !== undefined && (
-                            <span>Estimated remaining: {formatEstimatedTime(comfyUiLiveStatusQuery.data.estimatedSecondsRemaining)}</span>
-                          )}
-                          {comfyUiLiveStatusQuery.data?.queueRemaining !== null && comfyUiLiveStatusQuery.data?.queueRemaining !== undefined && (
-                            <span>Queue: {comfyUiLiveStatusQuery.data.queueRemaining}</span>
-                          )}
+                          <span>Background task #{activeQwenTaskId}</span>
+                          <span>Estimated remaining: {typeof qwenEstimatedSecondsRemaining === "number" ? formatEstimatedTime(qwenEstimatedSecondsRemaining) : "awaiting workstation estimate"}</span>
                         </div>
                       ) : (
                         <p className="text-xs text-muted-foreground">{elapsedSeconds}s elapsed</p>
@@ -501,19 +509,28 @@ export default function Dashboard() {
                           <span aria-hidden="true" className={stage.state === "completed" ? "text-secondary" : stage.state === "error" ? "text-destructive" : "text-accent"}>
                             {stage.state === "completed" ? "✓" : stage.state === "error" ? "!" : "•"}
                           </span>
-                          <span className={stage.state === "error" ? "text-destructive" : stage.state === "active" ? "text-foreground" : "text-muted-foreground"}>
+                          <span className={`break-words ${stage.state === "error" ? "text-destructive" : stage.state === "active" ? "text-foreground" : "text-muted-foreground"}`}>
                             {stage.label}{stage.detail ? ` — ${stage.detail}` : ""}
                           </span>
                         </li>
                       ))}
                     </ol>
                     <p className="text-xs text-muted-foreground">
-                      {activeComfyUiTaskId
-                        ? comfyUiLiveStatusQuery.data?.label ?? "XXX results are saved to your private gallery and one credit is deducted only after that save succeeds."
+                      {isBackgroundQwenTask
+                        ? qwenTaskMessage ?? "Your XXX image is processing in the background. You may continue with other photo and shirt style."
                         : liveProgress >= 92
                           ? "The AI provider is still working. This request will remain open until it returns a result or a safe failure."
                           : "Preparing your edit. The current server-confirmed stage appears above."}
                     </p>
+                  </div>
+                )}
+                {backgroundQwenError && (
+                  <div role="alert" className="space-y-3 rounded border border-destructive/70 bg-destructive/10 p-4 text-destructive">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="font-bold">XXX TASK ERROR</p>
+                      <Button type="button" variant="outline" size="sm" onClick={() => setBackgroundQwenError(null)} className="border-destructive/60 text-destructive">DISMISS</Button>
+                    </div>
+                    <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words font-sans text-sm">{backgroundQwenError}</pre>
                   </div>
                 )}
               </div>

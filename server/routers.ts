@@ -12,6 +12,7 @@ import {
   getUserPhotos,
   saveTryOnHistory,
   getTryOnHistory,
+  getAdminUserTaskErrors,
   getAdminUserProfile,
   getAdminUsers,
   getUserGallery,
@@ -51,6 +52,7 @@ import { ComfyUiPocError, runComfyUIPOC } from "./comfyuiPoc";
 import { createComfyUiPocLiveStatus, getComfyUiPocLiveStatus, updateComfyUiPocLiveStatus } from "./comfyuiPocLiveStatus";
 import { getComfyUiPocDefaultPrompt } from "./comfyuiPocDefaultPrompt";
 import { processDashboardQwenPoc } from "./dashboardQwenPoc";
+import { QWEN_EDIT_CREDIT_COST } from "./comfyuiQwenWorkflow";
 
 // Shirt styles available for try-on
 const SHIRT_STYLES = [
@@ -112,8 +114,8 @@ const bridgeOutputMimeSchema = z.enum(["image/jpeg", "image/png", "image/webp"])
 export const appRouter = router({
   comfyui: router({
     startQwenEdit: protectedProcedure
-      .input(z.object({ photoId: z.number().int().positive() }))
-      .mutation(({ ctx, input }) => startLocalBridgeQwenTask(ctx.user.id, input.photoId)),
+      .input(z.object({ photoId: z.number().int().positive(), positivePrompt: z.string().max(1_000_000).optional() }))
+      .mutation(({ ctx, input }) => startLocalBridgeQwenTask(ctx.user.id, input.photoId, input.positivePrompt)),
     qwenEditStatus: protectedProcedure
       .input(z.object({ taskId: z.number().int().positive() }))
       .query(({ ctx, input }) => refreshLocalBridgeQwenTask(ctx.user.id, input.taskId)),
@@ -163,6 +165,7 @@ export const appRouter = router({
             historyId: task.historyId,
             workflowId: task.workflowId,
             sourceImageUrl,
+            positivePrompt: task.positivePrompt,
             leaseCredential: task.leaseCredential,
             leaseExpiresAt: task.leaseExpiresAt,
           },
@@ -176,8 +179,9 @@ export const appRouter = router({
         status: z.enum(["leased", "processing"]).optional(),
         progressKey: z.string().min(1).max(100),
         progressLabel: z.string().min(1).max(255),
-        progressDetail: z.string().max(2_000).optional(),
+        progressDetail: z.string().max(1_000_000).optional(),
         promptId: z.string().max(128).optional(),
+        estimatedSecondsRemaining: z.number().int().min(0).max(7 * 24 * 60 * 60).optional(),
       }))
       .mutation(async ({ input }) => {
         const device = await getBridgeDeviceFromCredential(input.credential);
@@ -192,6 +196,7 @@ export const appRouter = router({
           progressLabel: input.progressLabel,
           progressDetail: input.progressDetail,
           promptId: input.promptId,
+          estimatedSecondsRemaining: input.estimatedSecondsRemaining,
         });
         if (!updated) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "The Bridge task lease is no longer valid." });
         return { success: true };
@@ -228,7 +233,7 @@ export const appRouter = router({
           status: "success",
           resultImageUrl: result.url,
           resultImageKey: result.key,
-          creditsDeducted: 1,
+          creditsDeducted: QWEN_EDIT_CREDIT_COST,
         });
         await updateTryOnTaskStages(task.historyId, buildCompletedBridgeStages(parseLocalBridgeStages(history.bubbleApiResponse)));
         return { success: true };
@@ -238,7 +243,7 @@ export const appRouter = router({
         credential: bridgeCredentialSchema,
         taskId: z.number().int().positive(),
         leaseCredential: bridgeLeaseSchema,
-        message: z.string().min(1).max(500),
+        message: z.string().min(1).max(1_000_000),
       }))
       .mutation(async ({ input }) => {
         const device = await getBridgeDeviceFromCredential(input.credential);
@@ -252,7 +257,7 @@ export const appRouter = router({
         });
         if (!accepted) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "The Bridge task lease is no longer valid." });
         const task = await getBridgeTaskById(input.taskId);
-        if (task) await failLocalBridgeTaskForUser(task.userId, task.historyId, "The local Qwen workstation could not complete this edit. Your credit has been returned.");
+        if (task) await failLocalBridgeTaskForUser(task.userId, task.historyId, input.message);
         return { success: true };
       }),
   }),
@@ -299,6 +304,7 @@ export const appRouter = router({
     listUsers: passwordAdminProcedure.query(() => getAdminUsers()),
     userProfile: passwordAdminProcedure.input(z.object({ userId: z.number().int().positive() })).query(({ input }) => getAdminUserProfile(input.userId)),
     userGallery: passwordAdminProcedure.input(z.object({ userId: z.number().int().positive() })).query(({ input }) => getUserGallery(input.userId)),
+    userTaskErrors: passwordAdminProcedure.input(z.object({ userId: z.number().int().positive() })).query(({ input }) => getAdminUserTaskErrors(input.userId)),
   }),
 
   // Credits management

@@ -1,5 +1,7 @@
 export const QWEN_EDIT_STYLE_ID = "qwen-image-edit-rapid";
 export const QWEN_EDIT_STYLE_NAME = "XXX";
+/** XXX edits use the local Qwen workstation and have a distinct fixed credit cost. */
+export const QWEN_EDIT_CREDIT_COST = 10;
 export const QWEN_INPUT_NODE_ID = "78";
 export const QWEN_OUTPUT_NODE_ID = "102";
 export const QWEN_PROMPT_NODE_ID = "119";

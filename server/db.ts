@@ -1,7 +1,8 @@
 import { and, desc, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users, userPhotos, InsertUserPhoto, tryOnHistory, InsertTryOnHistory } from "../drizzle/schema";
+import { InsertUser, users, userPhotos, InsertUserPhoto, tryOnHistory, InsertTryOnHistory, comfyBridgeTasks } from "../drizzle/schema";
 import { ENV } from './_core/env';
+import { QWEN_EDIT_STYLE_ID } from "./comfyuiQwenWorkflow";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -489,5 +490,67 @@ export async function getAdminUserProfile(userId: number) {
   } catch (error) {
     console.error("[Database] Failed to get admin user profile:", error);
     return null;
+  }
+}
+
+function getStoredTaskFailureDetail(serialized: string | null): string | null {
+  if (!serialized) return null;
+  try {
+    const parsed = JSON.parse(serialized) as { taskStages?: unknown };
+    if (!Array.isArray(parsed.taskStages)) return null;
+    for (const stage of [...parsed.taskStages].reverse()) {
+      if (
+        typeof stage === "object" &&
+        stage !== null &&
+        (stage as { state?: unknown }).state === "error" &&
+        typeof (stage as { detail?: unknown }).detail === "string" &&
+        (stage as { detail: string }).detail.length > 0
+      ) {
+        return (stage as { detail: string }).detail;
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/** Return full failure diagnostics for the selected user's durable XXX jobs. */
+export async function getAdminUserTaskErrors(userId: number, limit: number = 50) {
+  const db = await getDb();
+  if (!db) return [];
+  try {
+    const rows = await db
+      .select({
+        historyId: tryOnHistory.id,
+        status: tryOnHistory.status,
+        createdAt: tryOnHistory.createdAt,
+        completedAt: tryOnHistory.completedAt,
+        taskId: comfyBridgeTasks.id,
+        bridgeStatus: comfyBridgeTasks.status,
+        attemptCount: comfyBridgeTasks.attemptCount,
+        progressKey: comfyBridgeTasks.progressKey,
+        progressLabel: comfyBridgeTasks.progressLabel,
+        progressDetail: comfyBridgeTasks.progressDetail,
+        lastError: comfyBridgeTasks.lastError,
+        bubbleApiResponse: tryOnHistory.bubbleApiResponse,
+      })
+      .from(tryOnHistory)
+      .leftJoin(comfyBridgeTasks, eq(comfyBridgeTasks.historyId, tryOnHistory.id))
+      .where(and(
+        eq(tryOnHistory.userId, userId),
+        eq(tryOnHistory.shirtStyle, QWEN_EDIT_STYLE_ID),
+        eq(tryOnHistory.status, "failed"),
+      ))
+      .orderBy(desc(tryOnHistory.id))
+      .limit(Math.min(Math.max(limit, 1), 100));
+
+    return rows.map(({ bubbleApiResponse, lastError, ...task }) => ({
+      ...task,
+      fullError: lastError ?? getStoredTaskFailureDetail(bubbleApiResponse) ?? "No detailed error was recorded for this task.",
+    }));
+  } catch (error) {
+    console.error("[Database] Failed to get administrator XXX task errors:", error);
+    return [];
   }
 }

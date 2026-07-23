@@ -10,7 +10,10 @@
     "check": "tsc --noEmit",
     "format": "prettier --write .",
     "test": "vitest run",
-    "db:push": "drizzle-kit generate && drizzle-kit migrate"
+    "db:push": "drizzle-kit generate && drizzle-kit migrate",
+    "bridge:pair": "tsx bridge/shirt-changer-bridge.ts pair",
+    "bridge:run": "tsx bridge/shirt-changer-bridge.ts run",
+    "bridge:status": "tsx bridge/shirt-changer-bridge.ts status"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.693.0",

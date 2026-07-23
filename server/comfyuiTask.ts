@@ -20,7 +20,7 @@ import {
   getApprovedQwenOutput,
   submitApprovedQwenEdit,
 } from "./comfyui";
-import { QWEN_EDIT_STYLE_ID, QWEN_EDIT_STYLE_NAME } from "./comfyuiQwenWorkflow";
+import { QWEN_EDIT_CREDIT_COST, QWEN_EDIT_STYLE_ID, QWEN_EDIT_STYLE_NAME } from "./comfyuiQwenWorkflow";
 import { storagePut } from "./storage";
 
 const MAX_QWEN_QUEUE_AGE_MS = 10 * 60 * 1_000;
@@ -73,8 +73,8 @@ async function refundAndFail(
   message: string,
   metadata?: ComfyUiTaskMetadata,
 ) {
-  const refunded = await addCredits(userId, 1);
-  if (!refunded) console.error("[ComfyUI] Failed to refund credit for task", historyId);
+  const refunded = await addCredits(userId, QWEN_EDIT_CREDIT_COST);
+  if (!refunded) console.error("[ComfyUI] Failed to refund XXX credits for task", { historyId, credits: QWEN_EDIT_CREDIT_COST });
   await updateTryOnTaskStages(historyId, failStages(stages, message), metadata);
   await updateTryOnHistory(historyId, { status: "failed", creditsDeducted: 0 });
 }
@@ -82,8 +82,8 @@ async function refundAndFail(
 /** Creates a durable Qwen task; no workflow or prompt may be supplied by the browser. */
 export async function startApprovedQwenTask(userId: number, photoId: number) {
   const balance = await getUserCredits(userId);
-  if (balance < 1) {
-    throw new TRPCError({ code: "FORBIDDEN", message: "Insufficient credits. You need at least 1 credit to use XXX." });
+  if (balance < QWEN_EDIT_CREDIT_COST) {
+    throw new TRPCError({ code: "FORBIDDEN", message: `Insufficient credits. You need at least ${QWEN_EDIT_CREDIT_COST} credits to use XXX.` });
   }
 
   const photo = (await getUserPhotos(userId)).find(candidate => candidate.id === photoId);
@@ -107,10 +107,10 @@ export async function startApprovedQwenTask(userId: number, photoId: number) {
   ];
   await updateTryOnTaskStages(historyId, stages);
 
-  const deducted = await deductCredits(userId, 1);
+  const deducted = await deductCredits(userId, QWEN_EDIT_CREDIT_COST);
   if (!deducted) {
     await updateTryOnHistory(historyId, { status: "failed", creditsDeducted: 0 });
-    throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to reserve a credit for XXX." });
+    throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to reserve ${QWEN_EDIT_CREDIT_COST} credits for XXX.` });
   }
 
   try {
@@ -130,7 +130,7 @@ export async function startApprovedQwenTask(userId: number, photoId: number) {
     stages = advanceStage(stages, "qwen_queued", "Qwen image edit is in progress", "Your result will appear automatically when it is ready.");
     await updateTryOnTaskStages(historyId, stages, metadata);
 
-    return { taskId: historyId, status: "pending" as const, creditsRemaining: balance - 1, shirtApplied: QWEN_EDIT_STYLE_NAME };
+    return { taskId: historyId, status: "pending" as const, creditsRemaining: balance - QWEN_EDIT_CREDIT_COST, shirtApplied: QWEN_EDIT_STYLE_NAME };
   } catch (error) {
     const message = safeErrorMessage(error);
     console.error("[ComfyUI] Failed to start Qwen task", { historyId, category: error instanceof ComfyUiConfigurationError ? "configuration" : "remote" });
@@ -175,7 +175,7 @@ export async function refreshApprovedQwenTask(userId: number, historyId: number)
     const result = await downloadApprovedQwenOutput(output);
     const extension = output.filename.split(".").pop()?.toLowerCase() || "jpg";
     const stored = await storagePut(`comfyui-results/${userId}/${historyId}.${extension}`, result.data, result.contentType);
-    await updateTryOnHistory(historyId, { status: "success", resultImageUrl: stored.url, resultImageKey: stored.key, creditsDeducted: 1 });
+    await updateTryOnHistory(historyId, { status: "success", resultImageUrl: stored.url, resultImageKey: stored.key, creditsDeducted: QWEN_EDIT_CREDIT_COST });
     await updateTryOnTaskStages(historyId, completeStage(stages, "completed", "XXX edit complete"), metadata);
     return { status: "success" as const, resultImageUrl: stored.url, shirtApplied: QWEN_EDIT_STYLE_NAME };
   } catch (error) {

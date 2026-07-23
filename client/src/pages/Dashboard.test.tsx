@@ -5,13 +5,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Dashboard from "./Dashboard";
 
 const mocks = vi.hoisted(() => ({
+  balance: 5,
   mutateAsync: vi.fn(),
-  processDashboardQwen: vi.fn(),
+  startQwenEdit: vi.fn(),
   refetchCredits: vi.fn(),
   refetchPhotos: vi.fn(),
   setLocation: vi.fn(),
   defaultPromptData: { prompt: "Change the shirt to yellow." } as { prompt: string } | null,
-  liveStatusData: null as unknown,
+  qwenStatusData: null as unknown,
   toastError: vi.fn(),
   toastSuccess: vi.fn(),
 }));
@@ -19,7 +20,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/lib/trpc", () => ({
   trpc: {
     credits: {
-      getBalance: { useQuery: () => ({ data: { balance: 5 }, refetch: mocks.refetchCredits }) },
+      getBalance: { useQuery: () => ({ data: { balance: mocks.balance }, refetch: mocks.refetchCredits }) },
     },
     photos: {
       list: {
@@ -43,8 +44,10 @@ vi.mock("@/lib/trpc", () => ({
     },
     comfyuiPoc: {
       defaultPrompt: { useQuery: () => ({ data: mocks.defaultPromptData, isLoading: false }) },
-      processDashboardQwen: { useMutation: () => ({ mutateAsync: mocks.processDashboardQwen }) },
-      getLiveStatus: { useQuery: () => ({ data: mocks.liveStatusData }) },
+    },
+    comfyui: {
+      startQwenEdit: { useMutation: () => ({ mutateAsync: mocks.startQwenEdit }) },
+      qwenEditStatus: { useQuery: () => ({ data: mocks.qwenStatusData, isFetching: false }) },
     },
   },
 }));
@@ -77,14 +80,14 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
-async function selectOwnedPhotoAndShirt() {
+async function selectOwnedPhotoAndShirt(shirtName = "Neon Pink (1 Credit)") {
   const file = new File(["photo"], "person.jpg", { type: "image/jpeg" });
   Object.defineProperty(file, "arrayBuffer", { value: async () => new ArrayBuffer(4) });
   const fileInput = document.querySelector<HTMLInputElement>("input[type=file]");
   if (!fileInput) throw new Error("Expected a file input");
   fireEvent.change(fileInput, { target: { files: [file] } });
   await waitFor(() => expect(screen.getByAltText("Selected upload")).toBeTruthy());
-  fireEvent.click(screen.getByText("Neon Pink (1 Credit)"));
+  fireEvent.click(screen.getByText(shirtName));
 }
 
 describe("Dashboard Try On Now lifecycle", () => {
@@ -92,13 +95,14 @@ describe("Dashboard Try On Now lifecycle", () => {
 
   beforeEach(() => {
     consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    mocks.balance = 5;
     mocks.mutateAsync.mockReset();
-    mocks.processDashboardQwen.mockReset();
+    mocks.startQwenEdit.mockReset();
     mocks.refetchCredits.mockReset();
     mocks.refetchPhotos.mockReset();
     mocks.setLocation.mockReset();
     mocks.defaultPromptData = { prompt: "Change the shirt to yellow." };
-    mocks.liveStatusData = null;
+    mocks.qwenStatusData = null;
     mocks.toastError.mockReset();
     mocks.toastSuccess.mockReset();
     mocks.refetchPhotos.mockResolvedValue({ data: [{ id: 7, photoKey: "photos/1/test.jpg", photoUrl: "https://storage.example.test/photos/1/test.jpg" }] });
@@ -113,7 +117,7 @@ describe("Dashboard Try On Now lifecycle", () => {
     cleanup();
   });
 
-  it("keeps the live task log visible at finalizing progress and then returns the button to a retryable state", async () => {
+  it("keeps the standard live task log visible at finalizing progress and then returns the button to a retryable state", async () => {
     const request = deferred<never>();
     mocks.mutateAsync.mockReturnValue(request.promise);
     render(<Dashboard />);
@@ -135,22 +139,7 @@ describe("Dashboard Try On Now lifecycle", () => {
     expect(mocks.toastError).toHaveBeenCalledWith(safeMessage);
   });
 
-  it("renders server-confirmed stages instead of only a local waiting indicator", async () => {
-    const request = deferred<never>();
-    mocks.mutateAsync.mockReturnValue(request.promise);
-    mocks.liveStatusData = {
-      phase: "executing",
-      label: "AI shirt generation in progress",
-      events: [{ id: 1, label: "AI shirt generation in progress", at: 1 }],
-    };
-    render(<Dashboard />);
-    await selectOwnedPhotoAndShirt();
-    fireEvent.click(screen.getByRole("button", { name: "Try on now" }));
-    expect(screen.getByText("AI shirt generation in progress")).toBeTruthy();
-    await act(async () => { request.reject(new Error("Unable to finish")); await Promise.resolve(); });
-  });
-
-  it("shows completion and then restores Try On Now after a successful generation", async () => {
+  it("shows completion and restores Try On Now after a successful standard generation", async () => {
     const request = deferred<{ resultImageUrl: string; shirtApplied: string; creditsRemaining: number }>();
     mocks.mutateAsync.mockReturnValue(request.promise);
     render(<Dashboard />);
@@ -163,9 +152,7 @@ describe("Dashboard Try On Now lifecycle", () => {
     });
     await act(async () => { await vi.advanceTimersByTimeAsync(180); });
     expect(screen.getByText("TRY-ON RESULT")).toBeTruthy();
-    const retryButton = screen.getByRole("button", { name: "Try on now" });
-    expect(retryButton.textContent).toContain("TRY ON NOW");
-    expect(retryButton.hasAttribute("disabled")).toBe(false);
+    expect(screen.getByRole("button", { name: "Try on now" }).hasAttribute("disabled")).toBe(false);
     expect(mocks.toastSuccess).toHaveBeenCalledWith("Try-on completed!");
   });
 
@@ -187,61 +174,70 @@ describe("Dashboard Try On Now lifecycle", () => {
     }
   });
 
-  it("starts the fixed Qwen workflow when XXX is selected without calling the regular try-on mutation", async () => {
-    const request = deferred<{ success: true; resultImageUrl: string; shirtApplied: string }>();
-    mocks.processDashboardQwen.mockReturnValue(request.promise);
+  it("queues XXX in the background, immediately gives Gallery guidance, and leaves standard styles available", async () => {
+    mocks.balance = 15;
+    mocks.qwenStatusData = { status: "pending", stages: [{ key: "bridge_queue", label: "Waiting for the local Qwen workstation", state: "active", timestamp: 1 }] };
+    mocks.startQwenEdit.mockResolvedValue({ taskId: 987, status: "pending", creditsRemaining: 5, shirtApplied: "XXX" });
     render(<Dashboard />);
-    await selectOwnedPhotoAndShirt();
-
-    fireEvent.click(screen.getByText("XXX (10 Credits)"));
+    await selectOwnedPhotoAndShirt("XXX (10 Credits)");
     fireEvent.click(screen.getByRole("button", { name: "Try on now" }));
 
-      await waitFor(() => expect(mocks.processDashboardQwen).toHaveBeenCalledWith(expect.objectContaining({
-        photoId: 7,
-        positivePrompt: "undress the girl, make her completely nude, small to medium breasts, pink nipples, others remain unchanged, natural.",
-        taskId: expect.any(String),
-    })));
+    await waitFor(() => expect(mocks.startQwenEdit).toHaveBeenCalledWith({
+      photoId: 7,
+      positivePrompt: "undress the girl, make her completely nude, small to medium breasts, pink nipples, others remain unchanged, natural.",
+    }));
     expect(mocks.mutateAsync).not.toHaveBeenCalled();
-    expect(screen.getByText("Qwen ComfyUI is processing your image")).toBeTruthy();
-    await act(async () => {
-      request.resolve({ success: true, resultImageUrl: "https://storage.example.test/generated/result.png", shirtApplied: "XXX" });
-      await Promise.resolve();
-    });
+    expect(mocks.toastSuccess).toHaveBeenCalledWith("Your image will be ready in the Gallery. You may continue with other photo and shirt style.");
+    expect(screen.queryByText("TRY-ON RESULT")).toBeNull();
+    expect(screen.getByText("LIVE TASK LOG")).toBeTruthy();
+
+    fireEvent.click(screen.getByText("Neon Pink (1 Credit)"));
+    expect(screen.getByRole("button", { name: "Try on now" }).hasAttribute("disabled")).toBe(false);
   });
 
-  it("submits unrestricted XXX prompt text without a client-side keyword rejection", async () => {
-    mocks.processDashboardQwen.mockResolvedValue({
-      success: true,
-      resultImageUrl: "https://storage.example.test/generated/xxx-result.png",
-      shirtApplied: "XXX",
-    });
+  it("forwards unrestricted XXX prompt text unchanged to the durable background request", async () => {
+    mocks.balance = 15;
+    mocks.startQwenEdit.mockResolvedValue({ taskId: 988, status: "pending", creditsRemaining: 5, shirtApplied: "XXX" });
     render(<Dashboard />);
-    await selectOwnedPhotoAndShirt();
-    fireEvent.click(screen.getByText("XXX (10 Credits)"));
+    await selectOwnedPhotoAndShirt("XXX (10 Credits)");
     fireEvent.change(screen.getByLabelText(/positive prompt/i), { target: { value: "Remove the subject's clothing." } });
     fireEvent.click(screen.getByRole("button", { name: "Try on now" }));
 
-    await waitFor(() => expect(mocks.processDashboardQwen).toHaveBeenCalledWith(expect.objectContaining({
-      positivePrompt: "Remove the subject's clothing.",
-    })));
+    await waitFor(() => expect(mocks.startQwenEdit).toHaveBeenCalledWith({ photoId: 7, positivePrompt: "Remove the subject's clothing." }));
     expect(mocks.toastError).not.toHaveBeenCalled();
     expect(mocks.mutateAsync).not.toHaveBeenCalled();
   });
 
-  it("shows the automatically saved XXX result and lets the user open the private gallery", async () => {
-    mocks.processDashboardQwen.mockResolvedValue({
-      success: true,
-      resultImageUrl: "https://storage.example.test/generated/xxx-result.png",
-      shirtApplied: "XXX",
-    });
-    render(<Dashboard />);
-    await selectOwnedPhotoAndShirt();
-    fireEvent.click(screen.getByText("XXX (10 Credits)"));
+  it("notifies the user when a completed XXX image reaches Gallery without opening a result dialog", async () => {
+    mocks.balance = 15;
+    mocks.qwenStatusData = { status: "pending", stages: [{ key: "qwen_processing", label: "Qwen image edit is in progress", state: "active", timestamp: 1 }], estimatedSecondsRemaining: 42 };
+    mocks.startQwenEdit.mockResolvedValue({ taskId: 989, status: "pending", creditsRemaining: 5, shirtApplied: "XXX" });
+    const view = render(<Dashboard />);
+    await selectOwnedPhotoAndShirt("XXX (10 Credits)");
     fireEvent.click(screen.getByRole("button", { name: "Try on now" }));
+    await waitFor(() => expect(screen.getByText(/Estimated remaining: about 42s/)).toBeTruthy());
 
-    await waitFor(() => expect(screen.getByText("TRY-ON RESULT")).toBeTruthy());
-    expect(screen.getByText(/saved automatically to your private gallery/i)).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "VIEW GALLERY" }));
-    expect(mocks.setLocation).toHaveBeenCalledWith("/gallery");
+    mocks.qwenStatusData = { status: "success", resultImageUrl: "https://storage.example.test/generated/xxx-result.png", shirtApplied: "XXX" };
+    view.rerender(<Dashboard />);
+
+    await waitFor(() => expect(mocks.toastSuccess).toHaveBeenCalledWith("Your photo is ready. Please view in the Gallery."));
+    expect(screen.queryByText("TRY-ON RESULT")).toBeNull();
+  });
+
+  it("renders the full failed XXX message without ellipsis or hidden truncation", async () => {
+    mocks.balance = 15;
+    const fullError = `Bridge failure:\n${"diagnostic-detail ".repeat(100)}END-OF-FULL-ERROR`;
+    mocks.qwenStatusData = { status: "pending", stages: [{ key: "qwen_processing", label: "Qwen image edit is in progress", state: "active", timestamp: 1 }] };
+    mocks.startQwenEdit.mockResolvedValue({ taskId: 990, status: "pending", creditsRemaining: 5, shirtApplied: "XXX" });
+    const view = render(<Dashboard />);
+    await selectOwnedPhotoAndShirt("XXX (10 Credits)");
+    fireEvent.click(screen.getByRole("button", { name: "Try on now" }));
+    await waitFor(() => expect(mocks.startQwenEdit).toHaveBeenCalled());
+
+    mocks.qwenStatusData = { status: "failed", message: fullError };
+    view.rerender(<Dashboard />);
+
+    await waitFor(() => expect(screen.getByText((_, element) => element?.tagName === "PRE" && element.textContent === fullError)).toBeTruthy());
+    expect(mocks.toastError).toHaveBeenCalledWith(fullError);
   });
 });

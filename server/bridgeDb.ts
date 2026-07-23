@@ -30,6 +30,7 @@ export type ClaimedBridgeTask = {
   photoId: number;
   photoKey: string;
   workflowId: string;
+  positivePrompt: string;
   leaseCredential: string;
   leaseExpiresAt: Date;
 };
@@ -173,11 +174,13 @@ export async function createQueuedBridgeTask(input: {
   photoId: number;
   deviceId: number;
   workflowId: string;
+  positivePrompt?: string;
 }): Promise<number | null> {
   const db = await getDb();
   if (!db) return null;
   const result = await db.insert(comfyBridgeTasks).values({
     ...input,
+    positivePrompt: input.positivePrompt ?? null,
     status: "queued",
     attemptCount: 0,
   });
@@ -201,6 +204,7 @@ export async function claimNextBridgeTask(deviceId: number): Promise<ClaimedBrid
       photoId: comfyBridgeTasks.photoId,
       workflowId: comfyBridgeTasks.workflowId,
       photoKey: userPhotos.photoKey,
+      positivePrompt: comfyBridgeTasks.positivePrompt,
     })
     .from(comfyBridgeTasks)
     .innerJoin(userPhotos, and(eq(userPhotos.id, comfyBridgeTasks.photoId), eq(userPhotos.userId, comfyBridgeTasks.userId)))
@@ -226,7 +230,7 @@ export async function claimNextBridgeTask(deviceId: number): Promise<ClaimedBrid
     .where(and(eq(comfyBridgeTasks.id, candidate.id), eq(comfyBridgeTasks.status, "queued")));
   if (!wasUpdated(updated)) return null;
 
-  return { ...candidate, leaseCredential, leaseExpiresAt };
+  return { ...candidate, positivePrompt: candidate.positivePrompt ?? "", leaseCredential, leaseExpiresAt };
 }
 
 export async function validateBridgeTaskLease(taskId: number, deviceId: number, leaseCredential: string) {
@@ -254,6 +258,7 @@ export async function updateBridgeTaskProgress(input: {
   progressLabel: string;
   progressDetail?: string | null;
   promptId?: string | null;
+  estimatedSecondsRemaining?: number | null;
 }): Promise<boolean> {
   const task = await validateBridgeTaskLease(input.taskId, input.deviceId, input.leaseCredential);
   if (!task) return false;
@@ -266,8 +271,9 @@ export async function updateBridgeTaskProgress(input: {
       status: input.status ?? "processing",
       progressKey: input.progressKey.slice(0, 100),
       progressLabel: input.progressLabel.slice(0, 255),
-      progressDetail: input.progressDetail?.slice(0, 2_000) ?? null,
+      progressDetail: input.progressDetail ?? null,
       promptId: input.promptId?.slice(0, 128) ?? task.promptId,
+      estimatedSecondsRemaining: input.estimatedSecondsRemaining ?? null,
       leaseExpiresAt,
     })
     .where(eq(comfyBridgeTasks.id, input.taskId));
@@ -286,6 +292,7 @@ export async function completeBridgeTaskLease(taskId: number, deviceId: number, 
       progressKey: "completed",
       progressLabel: "XXX edit complete",
       progressDetail: null,
+      estimatedSecondsRemaining: null,
       leaseHash: null,
       leaseExpiresAt: null,
       completedAt: new Date(),
@@ -311,7 +318,8 @@ export async function failBridgeTaskLease(input: {
       progressKey: "failed",
       progressLabel: "XXX edit failed",
       progressDetail: null,
-      lastError: input.message.slice(0, 500),
+      estimatedSecondsRemaining: null,
+      lastError: input.message,
       leaseHash: null,
       leaseExpiresAt: null,
       completedAt: new Date(),
@@ -354,6 +362,7 @@ export async function requeueExpiredBridgeTask(taskId: number): Promise<BridgeTa
       progressKey: "bridge_reconnecting",
       progressLabel: "Waiting for the local Qwen workstation to resume",
       progressDetail: null,
+      estimatedSecondsRemaining: null,
     })
     .where(and(eq(comfyBridgeTasks.id, taskId), eq(comfyBridgeTasks.status, task.status)));
   return wasUpdated(updated) ? "queued" : null;

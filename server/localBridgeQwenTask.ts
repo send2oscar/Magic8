@@ -17,7 +17,7 @@ import {
   requeueExpiredBridgeTask,
   type BridgeTaskStatus,
 } from "./bridgeDb";
-import { QWEN_EDIT_STYLE_ID, QWEN_EDIT_STYLE_NAME } from "./comfyuiQwenWorkflow";
+import { QWEN_EDIT_CREDIT_COST, QWEN_EDIT_STYLE_ID, QWEN_EDIT_STYLE_NAME } from "./comfyuiQwenWorkflow";
 
 function getInsertedHistoryId(result: unknown): number | null {
   const candidates = Array.isArray(result) ? result : [result];
@@ -53,29 +53,41 @@ function failStages(stages: TryOnTaskStage[], message: string): TryOnTaskStage[]
   return [...next, { key: "failed", label: "XXX edit could not be completed", state: "error", detail: message, timestamp: Date.now() }];
 }
 
+function getStoredFailureMessage(stages: TryOnTaskStage[]): string | null {
+  const failure = [...stages].reverse().find(stage => stage.state === "error" && typeof stage.detail === "string" && stage.detail.length > 0);
+  return failure?.detail ?? null;
+}
+
 async function refundAndFail(userId: number, historyId: number, stages: TryOnTaskStage[], message: string) {
-  const refunded = await addCredits(userId, 1);
-  if (!refunded) console.error("[LocalBridge] Failed to refund credit", { historyId });
+  const refunded = await addCredits(userId, QWEN_EDIT_CREDIT_COST);
+  if (!refunded) console.error("[LocalBridge] Failed to refund XXX credits", { historyId, credits: QWEN_EDIT_CREDIT_COST });
   await updateTryOnTaskStages(historyId, failStages(stages, message));
   await updateTryOnHistory(historyId, { status: "failed", creditsDeducted: 0 });
 }
 
 function bridgeStageFromStatus(status: BridgeTaskStatus, stages: TryOnTaskStage[], label?: string | null, detail?: string | null): TryOnTaskStage[] {
-  const existingActive = stages.at(-1)?.state === "active";
+  const activeStage = stages.at(-1);
+  const existingActive = activeStage?.state === "active";
   if (status === "queued") {
     return existingActive ? stages : advanceStage(stages, "bridge_queue", "Waiting for the local Qwen workstation", "The paired workstation will collect this task when it is online.");
   }
   if (status === "leased") {
-    return advanceStage(stages, "bridge_claimed", label || "Local Qwen workstation accepted the task", detail ?? undefined);
+    const nextLabel = label || "Local Qwen workstation accepted the task";
+    return activeStage?.key === "bridge_claimed" && activeStage.label === nextLabel && activeStage.detail === (detail ?? undefined)
+      ? stages
+      : advanceStage(stages, "bridge_claimed", nextLabel, detail ?? undefined);
   }
   if (status === "processing") {
-    return advanceStage(stages, "qwen_processing", label || "Qwen image edit is in progress", detail ?? undefined);
+    const nextLabel = label || "Qwen image edit is in progress";
+    return activeStage?.key === "qwen_processing" && activeStage.label === nextLabel && activeStage.detail === (detail ?? undefined)
+      ? stages
+      : advanceStage(stages, "qwen_processing", nextLabel, detail ?? undefined);
   }
   return stages;
 }
 
 /** Creates a Qwen job that can only be claimed by an online, owner-paired local Bridge. */
-export async function startLocalBridgeQwenTask(userId: number, photoId: number) {
+export async function startLocalBridgeQwenTask(userId: number, photoId: number, positivePrompt?: string) {
   const device = await getActiveBridgeDevice();
   if (!device?.online) {
     throw new TRPCError({
@@ -85,8 +97,8 @@ export async function startLocalBridgeQwenTask(userId: number, photoId: number) 
   }
 
   const balance = await getUserCredits(userId);
-  if (balance < 1) {
-    throw new TRPCError({ code: "FORBIDDEN", message: "Insufficient credits. You need at least 1 credit to use XXX." });
+  if (balance < QWEN_EDIT_CREDIT_COST) {
+    throw new TRPCError({ code: "FORBIDDEN", message: `Insufficient credits. You need at least ${QWEN_EDIT_CREDIT_COST} credits to use XXX.` });
   }
 
   const photo = (await getUserPhotos(userId)).find(candidate => candidate.id === photoId);
@@ -110,10 +122,10 @@ export async function startLocalBridgeQwenTask(userId: number, photoId: number) 
   ];
   await updateTryOnTaskStages(historyId, stages);
 
-  const deducted = await deductCredits(userId, 1);
+  const deducted = await deductCredits(userId, QWEN_EDIT_CREDIT_COST);
   if (!deducted) {
     await updateTryOnHistory(historyId, { status: "failed", creditsDeducted: 0 });
-    throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to reserve a credit for XXX." });
+    throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to reserve ${QWEN_EDIT_CREDIT_COST} credits for XXX.` });
   }
 
   try {
@@ -123,12 +135,13 @@ export async function startLocalBridgeQwenTask(userId: number, photoId: number) 
       photoId,
       deviceId: device.id,
       workflowId: QWEN_EDIT_STYLE_ID,
+      positivePrompt,
     });
     if (!taskId) throw new Error("Could not queue local Bridge task");
 
     stages = advanceStage(stages, "bridge_queue", "Waiting for the local Qwen workstation", "The paired workstation will collect this task shortly.");
     await updateTryOnTaskStages(historyId, stages);
-    return { taskId: historyId, status: "pending" as const, creditsRemaining: balance - 1, shirtApplied: QWEN_EDIT_STYLE_NAME };
+    return { taskId: historyId, status: "pending" as const, creditsRemaining: balance - QWEN_EDIT_CREDIT_COST, shirtApplied: QWEN_EDIT_STYLE_NAME };
   } catch (error) {
     const message = "The local Qwen task could not be queued. Your credit has been returned.";
     console.error("[LocalBridge] Failed to queue Qwen task", { historyId, error: error instanceof Error ? error.message : "unknown" });
@@ -146,12 +159,13 @@ export async function refreshLocalBridgeQwenTask(userId: number, historyId: numb
   if (history.status === "success") {
     return { status: "success" as const, resultImageUrl: history.resultImageUrl, shirtApplied: QWEN_EDIT_STYLE_NAME };
   }
+  const historyStages = parseStages(history.bubbleApiResponse);
   if (history.status === "failed") {
-    return { status: "failed" as const, message: "The XXX edit was not completed. Your credit has been returned." };
+    return { status: "failed" as const, message: getStoredFailureMessage(historyStages) ?? "The XXX edit was not completed. Your 10 credits have been returned." };
   }
 
   const task = await getBridgeTaskByHistoryId(historyId);
-  const initialStages = parseStages(history.bubbleApiResponse);
+  const initialStages = historyStages;
   if (!task) {
     const message = "The XXX task could not be recovered. Your credit has been returned.";
     await refundAndFail(userId, historyId, initialStages, message);
@@ -164,7 +178,7 @@ export async function refreshLocalBridgeQwenTask(userId: number, historyId: numb
   }
 
   if (taskStatus === "failed") {
-    const message = "The local Qwen workstation could not complete this edit. Your credit has been returned.";
+    const message = task.lastError || "The local Qwen workstation could not complete this edit. Your 10 credits have been returned.";
     await refundAndFail(userId, historyId, initialStages, message);
     return { status: "failed" as const, message };
   }
@@ -177,7 +191,11 @@ export async function refreshLocalBridgeQwenTask(userId: number, historyId: numb
   if (JSON.stringify(nextStages) !== JSON.stringify(initialStages)) {
     await updateTryOnTaskStages(historyId, nextStages);
   }
-  return { status: "pending" as const };
+  return {
+    status: "pending" as const,
+    stages: nextStages,
+    estimatedSecondsRemaining: task.estimatedSecondsRemaining,
+  };
 }
 
 export function buildCompletedBridgeStages(existingStages: TryOnTaskStage[]): TryOnTaskStage[] {

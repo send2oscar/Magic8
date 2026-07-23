@@ -111,9 +111,14 @@ export const comfyBridgeTasks = mysqlTable("comfy_bridge_tasks", {
   attemptCount: int("attemptCount").default(0).notNull(),
   progressKey: varchar("progressKey", { length: 100 }),
   progressLabel: varchar("progressLabel", { length: 255 }),
-  progressDetail: text("progressDetail"),
+  progressDetail: longtext("progressDetail"),
+  /** Exact optional Dashboard prompt supplied for this XXX edit. */
+  positivePrompt: longtext("positivePrompt"),
   promptId: varchar("promptId", { length: 128 }),
-  lastError: varchar("lastError", { length: 500 }),
+  /** Bridge-reported remaining seconds, when the local workstation can estimate it. */
+  estimatedSecondsRemaining: int("estimatedSecondsRemaining"),
+  /** Full failure text from the paired workstation; administrators can inspect it. */
+  lastError: longtext("lastError"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   completedAt: timestamp("completedAt"),
