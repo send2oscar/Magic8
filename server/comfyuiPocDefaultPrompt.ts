@@ -1,7 +1,11 @@
 const REMOTE_DEFAULT_PROMPT_URL = "http://www.oscarngan.com/defaultPrompt.txt";
 const MAX_REMOTE_PROMPT_BYTES = 4_096;
 const MAX_REMOTE_PROMPT_CHARS = 2_000;
-const REMOTE_PROMPT_TIMEOUT_MS = 4_000;
+// The owner-controlled HTTP source can take several seconds to establish its
+// first connection from a fresh application instance. Keep the UI responsive
+// because this query is asynchronous, while allowing one realistic visit-time
+// fetch to finish rather than returning an avoidable empty fallback.
+const REMOTE_PROMPT_TIMEOUT_MS = 12_000;
 
 export type ComfyUiPocDefaultPrompt =
   | { available: true; prompt: string }
@@ -13,10 +17,10 @@ function unavailable(): ComfyUiPocDefaultPrompt {
   return { available: false, prompt: "" };
 }
 
-function isSafeApparelPrompt(prompt: string): boolean {
-  const mentionsApparel = /\b(shirt|t-shirt|tee|top|blouse|jacket|hoodie|sweater|clothing|clothes|garment|outfit|dress|pants|skirt|jeans|uniform|coat)\b/i.test(prompt);
-  const containsNudification = /\b(nude|nudity|naked|topless|bottomless|undress|expos(?:e|ed|ing))\b|\b(?:remove|take off|delete|erase|eliminate|strip)\b.{0,80}\b(shirt|t-shirt|tee|top|blouse|jacket|hoodie|sweater|clothing|clothes|cloths|garment|outfit|dress|pants|skirt|jeans|uniform|coat)\b/i.test(prompt);
-  return mentionsApparel && !containsNudification;
+function isSafeRemotePrompt(prompt: string): boolean {
+  const containsExplicitSexualContent = /\b(nude|nudity|naked|topless|bottomless|undress|unclothed|expos(?:e|ed|ing)|porn(?:ographic)?|sex(?:ual)?|erotic|fetish|genitals?|breasts?|nipples?)\b/i.test(prompt);
+  const containsClothingRemoval = /\b(?:remove|take off|delete|erase|eliminate|strip)\b.{0,80}\b(shirt|t-shirt|tee|top|blouse|jacket|hoodie|sweater|clothing|clothes|cloths|garment|outfit|dress|pants|skirt|jeans|uniform|coat)\b/i.test(prompt);
+  return !containsExplicitSexualContent && !containsClothingRemoval;
 }
 
 async function readTextWithinLimit(response: Response): Promise<string | null> {
@@ -48,8 +52,8 @@ async function readTextWithinLimit(response: Response): Promise<string | null> {
 
 /**
  * Fetches the owner-controlled text file for each POC page visit. The URL is
- * fixed server-side, redirects are refused, and text is accepted only when it
- * remains a short, non-explicit apparel-editing instruction.
+ * fixed server-side, redirects are refused, and short non-explicit text is
+ * accepted so the owner can change the POC field's default without deployment.
  */
 export async function getComfyUiPocDefaultPrompt(fetchImpl: FetchLike = fetch): Promise<ComfyUiPocDefaultPrompt> {
   const controller = new AbortController();
@@ -67,7 +71,7 @@ export async function getComfyUiPocDefaultPrompt(fetchImpl: FetchLike = fetch): 
 
     const rawText = await readTextWithinLimit(response);
     const prompt = rawText?.replace(/\s+/g, " ").trim() ?? "";
-    if (!prompt || prompt.length > MAX_REMOTE_PROMPT_CHARS || !isSafeApparelPrompt(prompt)) {
+    if (!prompt || prompt.length > MAX_REMOTE_PROMPT_CHARS || !isSafeRemotePrompt(prompt)) {
       return unavailable();
     }
     return { available: true, prompt };
