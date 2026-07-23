@@ -51,11 +51,13 @@ function buildQwenWorkflow(imagePath: string, positivePrompt: string = ''): Reco
     },
     "77": {
       "inputs": {
-        "prompt": "",
-        "clip": ["103", 1]
+        "prompt": "ugly, blurry, distorted, artifacts, bad, wrong, low quality, anime, digital art, semirealistic, cartoon, manga, drawing, fake, unreal, large breasts",
+        "clip": ["103", 1],
+        "vae": ["118", 2],
+        "image": ["78", 0]
       },
-      "class_type": "CLIPTextEncode",
-      "_meta": { "title": "CLIP Text Encode (Negative)" }
+      "class_type": "TextEncodeQwenImageEdit",
+      "_meta": { "title": "TextEncodeQwenImageEdit" }
     },
     "78": {
       "inputs": {
@@ -66,26 +68,84 @@ function buildQwenWorkflow(imagePath: string, positivePrompt: string = ''): Reco
     },
     "88": {
       "inputs": {
-        "samples": ["121", 0],
+        "pixels": ["93", 0],
         "vae": ["118", 2]
       },
       "class_type": "VAEEncode",
       "_meta": { "title": "VAE Encode" }
     },
+    "93": {
+      "inputs": {
+        "upscale_method": "lanczos",
+        "megapixels": 1,
+        "resolution_steps": 1,
+        "image": ["78", 0]
+      },
+      "class_type": "ImageScaleToTotalPixels",
+      "_meta": { "title": "Scale Image to Total Pixels" }
+    },
     "102": {
       "inputs": {
+        "filename": "%time_%basemodelname_%seed",
+        "path": "qwen_edit/%date",
+        "extension": "jpg",
+        "lossless_webp": false,
+        "quality_jpeg_or_webp": 100,
+        "optimize_png": false,
+        "embed_workflow": true,
+        "save_workflow_as_json": false,
+        "counter": 0,
+        "time_format": "%Y-%m-%d-%H%M%S",
+        "show_preview": true,
         "images": ["8", 0],
-        "filename_prefix": "ComfyUI"
+        "metadata": ["106", 0]
       },
-      "class_type": "SaveImage",
-      "_meta": { "title": "Save Image" }
+      "class_type": "Image Saver Simple",
+      "_meta": { "title": "Image Saver Simple" }
     },
     "103": {
       "inputs": {
-        "ckpt_name": "Qwen-Rapid-AIO-v11.4.safetensors"
+        "PowerLoraLoaderHeaderWidget": { "type": "PowerLoraLoaderHeaderWidget" },
+        "➕ Add Lora": "",
+        "model": ["118", 0],
+        "clip": ["118", 1]
       },
-      "class_type": "CheckpointLoaderSimple",
-      "_meta": { "title": "Load Checkpoint" }
+      "class_type": "Power Lora Loader (rgthree)",
+      "_meta": { "title": "Power Lora Loader (rgthree)" }
+    },
+    "104": {
+      "inputs": {
+        "id": 0,
+        "widget_name": "ckpt_name",
+        "return_all": false,
+        "node_title": "",
+        "allowed_float_decimals": 2,
+        "any_input": ["118", 0]
+      },
+      "class_type": "WidgetToString",
+      "_meta": { "title": "Widget To String" }
+    },
+    "106": {
+      "inputs": {
+        "modelname": ["104", 0],
+        "positive": "unknown",
+        "negative": "unknown",
+        "width": 512,
+        "height": 512,
+        "seed_value": ["117", 0],
+        "steps": ["115", 0],
+        "cfg": 1,
+        "sampler_name": "euler",
+        "scheduler_name": "beta57",
+        "denoise": 1,
+        "clip_skip": 0,
+        "additional_hashes": "",
+        "download_civitai_data": true,
+        "easy_remix": true,
+        "custom": ""
+      },
+      "class_type": "Image Saver Metadata",
+      "_meta": { "title": "Image Saver Metadata" }
     },
     "115": {
       "inputs": { "value": 8 },
