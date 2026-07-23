@@ -81,8 +81,8 @@ type DashboardQwenPocInput = {
 export async function processDashboardQwenPoc(input: DashboardQwenPocInput) {
   const prompt = input.positivePrompt?.trim() ?? "";
   const balance = await getUserCredits(input.userId);
-  if (balance < 1) {
-    throw new TRPCError({ code: "FORBIDDEN", message: "Insufficient credits. You need at least 1 credit to use XXX." });
+  if (balance < 10) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Insufficient credits. You need at least 10 credits to use XXX." });
   }
 
   const photo = (await getUserPhotos(input.userId)).find((candidate) => candidate.id === input.photoId);
@@ -143,7 +143,7 @@ export async function processDashboardQwenPoc(input: DashboardQwenPocInput) {
     // The output exists safely in managed storage before any account balance is
     // changed. If charging or finalization fails, the history remains failed and
     // the user is not shown a completed gallery result.
-    const deducted = await deductCredits(input.userId, 1);
+    const deducted = await deductCredits(input.userId, 10);
     if (!deducted) {
       const message = "Your result was created, but a credit could not be confirmed, so it was not added to your gallery.";
       await updateTryOnHistory(historyId, { status: "failed", creditsDeducted: 0 });
@@ -157,10 +157,10 @@ export async function processDashboardQwenPoc(input: DashboardQwenPocInput) {
       status: "success",
       resultImageUrl: stored.url,
       resultImageKey: stored.key,
-      creditsDeducted: 1,
+      creditsDeducted: 10,
     });
     if (!finalized) {
-      await addCredits(input.userId, 1);
+      await addCredits(input.userId, 10);
       creditDeducted = false;
       await updateTryOnHistory(historyId, { status: "failed", creditsDeducted: 0 });
       await updateTryOnTaskStages(historyId, failedStages(stages, "The saved result could not be finalized in your gallery."));
@@ -179,7 +179,7 @@ export async function processDashboardQwenPoc(input: DashboardQwenPocInput) {
       success: true as const,
       resultImageUrl: stored.url,
       shirtApplied: QWEN_EDIT_STYLE_NAME,
-      creditsRemaining: balance - 1,
+      creditsRemaining: balance - 10,
       galleryHistoryId: historyId,
       diagnostics: result.diagnostics,
     };
@@ -190,7 +190,7 @@ export async function processDashboardQwenPoc(input: DashboardQwenPocInput) {
         ? error.message
         : "The XXX edit could not be completed.";
     if (creditDeducted) {
-      await addCredits(input.userId, 1);
+      await addCredits(input.userId, 10);
       creditDeducted = false;
     }
     await updateTryOnHistory(historyId, { status: "failed", creditsDeducted: 0 });

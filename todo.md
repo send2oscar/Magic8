@@ -248,3 +248,4 @@
 - [x] In the Gallery, also show the credit deducted of that generation.
 - [x] In the Dashboard page, add the corresponding credit will be deducted after the option [e.g. Classic White --> Class White (1 Credit)]. Only the XXX option deducts 10 credits, and other 5 options deducts 1 credit.
 - [x] Add a border, with a background color of the preview window of the result photo (after generation).
+- [x] Fix XXX option to deduct 10 credits instead of 1 credit

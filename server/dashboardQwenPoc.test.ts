@@ -51,7 +51,7 @@ const task = {
 describe("Dashboard XXX Qwen POC", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.getUserCredits.mockResolvedValue(3);
+    mocks.getUserCredits.mockResolvedValue(15);
     mocks.getUserPhotos.mockResolvedValue([{ id: task.photoId, photoKey: "uploads/user-8/source.jpg" }]);
     mocks.saveTryOnHistory.mockResolvedValue({ insertId: 71 });
     mocks.updateTryOnHistory.mockResolvedValue(true);
@@ -78,7 +78,7 @@ describe("Dashboard XXX Qwen POC", () => {
       success: true,
       resultImageUrl: "/manus-storage/comfyui-results/8/71.png",
       galleryHistoryId: 71,
-      creditsRemaining: 2,
+      creditsRemaining: 5,
     });
     expect(mocks.runComfyUIPOC).toHaveBeenCalledWith(
       Buffer.from("source-image"),
@@ -95,7 +95,7 @@ describe("Dashboard XXX Qwen POC", () => {
     expect(mocks.updateTryOnHistory).toHaveBeenCalledWith(71, expect.objectContaining({
       status: "success",
       resultImageUrl: "/manus-storage/comfyui-results/8/71.png",
-      creditsDeducted: 1,
+      creditsDeducted: 10,
     }));
   });
 
@@ -123,7 +123,7 @@ describe("Dashboard XXX Qwen POC", () => {
     mocks.updateTryOnHistory.mockResolvedValueOnce(false).mockResolvedValue(true);
 
     await expect(processDashboardQwenPoc(task)).rejects.toMatchObject({ code: "INTERNAL_SERVER_ERROR" });
-    expect(mocks.deductCredits).toHaveBeenCalledWith(task.userId, 1);
-    expect(mocks.addCredits).toHaveBeenCalledWith(task.userId, 1);
+    expect(mocks.deductCredits).toHaveBeenCalledWith(task.userId, 10);
+    expect(mocks.addCredits).toHaveBeenCalledWith(task.userId, 10);
   });
 });
