@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import React from "react";
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { POCComfyUI } from "./POCComfyUI";
 
@@ -12,6 +12,8 @@ type MutationOptions = {
 const mocks = vi.hoisted(() => ({
   mutationOptions: null as MutationOptions | null,
   mutate: vi.fn(),
+  defaultPrompt: { data: { available: false, prompt: "" } as any, isFetching: false },
+  liveStatus: { data: null as any, isFetching: false },
   toastError: vi.fn(),
   toastSuccess: vi.fn(),
 }));
@@ -19,6 +21,12 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/lib/trpc", () => ({
   trpc: {
     comfyuiPoc: {
+      defaultPrompt: {
+        useQuery: () => mocks.defaultPrompt,
+      },
+      getLiveStatus: {
+        useQuery: () => mocks.liveStatus,
+      },
       processImage: {
         useMutation: (options: MutationOptions) => {
           mocks.mutationOptions = options;
@@ -51,6 +59,8 @@ describe("POCComfyUI diagnostics", () => {
   beforeEach(() => {
     mocks.mutationOptions = null;
     mocks.mutate.mockReset();
+    mocks.defaultPrompt = { data: { available: false, prompt: "" }, isFetching: false };
+    mocks.liveStatus = { data: null, isFetching: false };
     mocks.toastError.mockReset();
     mocks.toastSuccess.mockReset();
     Element.prototype.scrollIntoView = vi.fn();
@@ -90,5 +100,71 @@ describe("POCComfyUI diagnostics", () => {
     expect(screen.getByText("remote-prompt-123")).toBeTruthy();
     expect(screen.getByAltText("Processed result").getAttribute("src")).toBe("data:image/png;base64,cG9jLWltYWdl");
     expect(mocks.toastSuccess).toHaveBeenCalledWith("ComfyUI POC completed successfully.");
+  });
+
+  it("uses a permitted server-loaded default prompt when the POC page opens", async () => {
+    mocks.defaultPrompt = {
+      data: { available: true, prompt: "Change the shirt to yellow." },
+      isFetching: false,
+    };
+
+    const { container } = render(<POCComfyUI />);
+    const promptField = container.querySelector("textarea") as HTMLTextAreaElement;
+
+    await waitFor(() => expect(promptField.value).toBe("Change the shirt to yellow."));
+  });
+
+  it("keeps the prompt field empty when the server rejects or cannot retrieve the remote default", () => {
+    mocks.defaultPrompt = { data: { available: false, prompt: "" }, isFetching: false };
+
+    const { container } = render(<POCComfyUI />);
+    expect((container.querySelector("textarea") as HTMLTextAreaElement).value).toBe("");
+  });
+
+  it("shows live sampler progress and clearly labelled estimated time while a POC request is active", async () => {
+    mocks.liveStatus = {
+      data: {
+        phase: "executing",
+        label: "Generating the edited image: 2 of 8 sampler steps complete.",
+        progressValue: 2,
+        progressMax: 8,
+        percent: 25,
+        estimatedSecondsRemaining: 18,
+        queueRemaining: 0,
+        events: [
+          { id: 1, label: "ComfyUI accepted the edit and added it to its queue.", at: Date.now() },
+          { id: 2, label: "Generating the edited image: 2 of 8 sampler steps complete.", at: Date.now() },
+        ],
+        updatedAt: Date.now(),
+      },
+      isFetching: false,
+    };
+    const OriginalFileReader = globalThis.FileReader;
+    class ImmediateFileReader {
+      onload: ((event: ProgressEvent<FileReader>) => void) | null = null;
+      readAsDataURL() {
+        this.onload?.({ target: { result: "data:image/png;base64,cG9jLWltYWdl" } } as unknown as ProgressEvent<FileReader>);
+      }
+    }
+    vi.stubGlobal("FileReader", ImmediateFileReader);
+
+    const { container } = render(<POCComfyUI />);
+    const fileInput = container.querySelector('input[type="file"]');
+    expect(fileInput).toBeTruthy();
+    const file = new File(["image"], "portrait.png", { type: "image/png" });
+    fireEvent.change(fileInput as HTMLInputElement, { target: { files: [file] } });
+    fireEvent.click(screen.getByRole("button", { name: "Process Image" }));
+
+    expect(await screen.findByTestId("comfyui-live-status")).toBeTruthy();
+    expect(screen.getByText("Progress: 25%")).toBeTruthy();
+    expect(screen.getByText("Estimated remaining: about 18s (estimate)")).toBeTruthy();
+    expect(screen.getByText("Queue: 0")).toBeTruthy();
+    expect(screen.getAllByText(/Generating the edited image: 2 of 8 sampler steps complete\./).length).toBeGreaterThan(0);
+    expect(mocks.mutate).toHaveBeenCalledWith(expect.objectContaining({
+      taskId: expect.stringMatching(/^[0-9a-f-]{36}$/),
+      imageName: "portrait.png",
+    }));
+
+    vi.stubGlobal("FileReader", OriginalFileReader);
   });
 });

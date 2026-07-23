@@ -37,3 +37,9 @@ This is an intentionally temporary direct-HTTP POC. It does **not** establish th
 The direct POC endpoint is reachable over plain HTTP. Unauthenticated requests to the root path, `/system_stats`, and `/object_info/LoadImage` each returned HTTP 200 from the public Internet. HTTPS on the same host and port did not negotiate TLS (`wrong version number`), which confirms that the current port serves HTTP rather than HTTPS.
 
 > This configuration is suitable only for the temporary POC. It must not be used for a launch or for users’ private images without placing ComfyUI behind an authenticated HTTPS boundary or moving to the planned workstation-initiated bridge.
+
+## Live-progress contract — 2026-07-23
+
+A controlled run using a normal 512×512 PNG confirmed that the configured instance emits task-scoped WebSocket events at `ws://<host>:8188/ws?clientId=<uuid>` when the matching `client_id` is included in the `/prompt` payload. The useful events are `execution_start`, `executing`, `progress`, `executed`, `execution_success`, and `status`.
+
+The sampler node emitted `progress` events with `value` and `max` fields from 1/8 through 8/8. The instance also reports the active node identifier. Queue depth is available from the nested status event when supplied by ComfyUI. ComfyUI did **not** provide a stable explicit remaining-seconds field in this run, so the POC must label its remaining time as an **estimate** calculated from observed sampler-step duration. It must ignore global monitoring events and never expose other users’ queue payloads, prompts, file paths, or hardware details.

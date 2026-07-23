@@ -47,6 +47,8 @@ import {
   startLocalBridgeQwenTask,
 } from "./localBridgeQwenTask";
 import { ComfyUiPocError, runComfyUIPOC } from "./comfyuiPoc";
+import { createComfyUiPocLiveStatus, getComfyUiPocLiveStatus, updateComfyUiPocLiveStatus } from "./comfyuiPocLiveStatus";
+import { getComfyUiPocDefaultPrompt } from "./comfyuiPocDefaultPrompt";
 
 // Shirt styles available for try-on
 const SHIRT_STYLES = [
@@ -406,15 +408,21 @@ export const appRouter = router({
 
   // ComfyUI POC
   comfyuiPoc: router({
+    defaultPrompt: publicProcedure.query(() => getComfyUiPocDefaultPrompt()),
+    getLiveStatus: protectedProcedure
+      .input(z.object({ taskId: z.string().uuid() }))
+      .query(({ ctx, input }) => getComfyUiPocLiveStatus(input.taskId, ctx.user.id)),
     processImage: protectedProcedure
       .input(
         z.object({
+          taskId: z.string().uuid(),
           imageBase64: z.string().min(4).max(35 * 1024 * 1024),
           imageName: z.string().min(1).max(255),
           positivePrompt: z.string().max(2_000).optional(),
         })
       )
-      .mutation(async ({ input }) => {
+      .mutation(async ({ ctx, input }) => {
+        createComfyUiPocLiveStatus(input.taskId, ctx.user.id);
         try {
           const imageBuffer = Buffer.from(input.imageBase64, 'base64');
           if (!imageBuffer.length || imageBuffer.length > 25 * 1024 * 1024) {
@@ -424,8 +432,19 @@ export const appRouter = router({
           const result = await runComfyUIPOC(
             imageBuffer,
             input.imageName,
-            input.positivePrompt || ''
+            input.positivePrompt || '',
+            {
+              clientId: input.taskId,
+              onProgress: (update) => {
+                updateComfyUiPocLiveStatus(input.taskId, ctx.user.id, update);
+              },
+            },
           );
+          updateComfyUiPocLiveStatus(input.taskId, ctx.user.id, {
+            phase: "completed",
+            label: "The edited image is ready to view and download.",
+            estimatedSecondsRemaining: 0,
+          });
 
           return {
             success: true,
@@ -437,6 +456,11 @@ export const appRouter = router({
           } as const;
         } catch (error) {
           if (error instanceof ComfyUiPocError) {
+            updateComfyUiPocLiveStatus(input.taskId, ctx.user.id, {
+              phase: "failed",
+              label: error.message,
+              estimatedSecondsRemaining: null,
+            });
             return {
               success: false,
               promptId: null,
@@ -447,6 +471,11 @@ export const appRouter = router({
             } as const;
           }
           console.error("[ComfyUI POC] Unexpected error", error);
+          updateComfyUiPocLiveStatus(input.taskId, ctx.user.id, {
+            phase: "failed",
+            label: "The ComfyUI POC could not be started. Please retry the request.",
+            estimatedSecondsRemaining: null,
+          });
           throw new TRPCError({
             code: "INTERNAL_SERVER_ERROR",
             message: "The ComfyUI POC could not be started. Please retry the request.",

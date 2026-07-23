@@ -72,6 +72,21 @@ export type ComfyUiPocResult = {
   message: string;
 };
 
+export type ComfyUiPocProgressUpdate = {
+  phase: "connecting" | "queued" | "executing" | "completed" | "unavailable";
+  label: string;
+  progressValue?: number | null;
+  progressMax?: number | null;
+  percent?: number | null;
+  estimatedSecondsRemaining?: number | null;
+  queueRemaining?: number | null;
+};
+
+type ComfyUiPocRunOptions = {
+  clientId?: string;
+  onProgress?: (update: ComfyUiPocProgressUpdate) => void;
+};
+
 function diagnostic(
   diagnostics: ComfyUiPocDiagnostic[],
   key: ComfyUiPocDiagnostic["key"],
@@ -146,6 +161,185 @@ async function readJson<T>(response: Response): Promise<T | null> {
     return (await response.json()) as T;
   } catch {
     return null;
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function numericValue(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+const POC_NODE_LABELS: Record<string, string> = {
+  "78": "Loading the uploaded source image.",
+  "93": "Preparing the source image for the Qwen workflow.",
+  "103": "Preparing the Qwen model configuration.",
+  "77": "Preparing the negative edit guidance.",
+  "119": "Preparing the shirt-edit guidance.",
+  "88": "Encoding the source image.",
+  "121": "Generating the edited image.",
+  "8": "Decoding the generated image.",
+  "102": "Saving the edited result.",
+};
+
+class ComfyUiProgressTracker {
+  private socket: WebSocket | null = null;
+  private promptId: string | null = null;
+  private firstSamplerProgressAt: number | null = null;
+  private receivedTerminalEvent = false;
+
+  constructor(
+    private readonly clientId: string,
+    private readonly onProgress: (update: ComfyUiPocProgressUpdate) => void,
+  ) {}
+
+  async connect() {
+    this.onProgress({ phase: "connecting", label: "Connecting to ComfyUI for live task progress." });
+    try {
+      const socket = new WebSocket(`${COMFYUI_URL.replace(/^http/, "ws")}/ws?clientId=${encodeURIComponent(this.clientId)}`);
+      this.socket = socket;
+      socket.addEventListener("message", (event) => this.handleMessage(event.data));
+      socket.addEventListener("close", () => {
+        if (!this.receivedTerminalEvent && this.promptId) {
+          this.onProgress({ phase: "unavailable", label: "Live ComfyUI progress is unavailable; processing will continue." });
+        }
+      });
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error("Timed out while opening ComfyUI live progress.")), 15_000);
+        socket.addEventListener("open", () => {
+          clearTimeout(timeout);
+          resolve();
+        }, { once: true });
+        socket.addEventListener("error", () => {
+          clearTimeout(timeout);
+          reject(new Error("ComfyUI live progress connection failed."));
+        }, { once: true });
+      });
+    } catch (error) {
+      console.warn("[ComfyUI POC] Live progress connection unavailable", error);
+      this.onProgress({ phase: "unavailable", label: "Live ComfyUI progress is unavailable; processing will continue." });
+      this.close();
+    }
+  }
+
+  setPromptId(promptId: string) {
+    this.promptId = promptId;
+    this.onProgress({ phase: "queued", label: "ComfyUI accepted the edit and added it to its queue." });
+  }
+
+  close() {
+    const socket = this.socket;
+    this.socket = null;
+    if (socket && socket.readyState < WebSocket.CLOSING) socket.close();
+  }
+
+  private handleMessage(rawData: unknown) {
+    if (typeof rawData !== "string") return;
+    try {
+      const message = JSON.parse(rawData) as { type?: unknown; data?: unknown };
+      if (!isRecord(message) || typeof message.type !== "string" || !isRecord(message.data)) return;
+      const data = message.data;
+      const eventPromptId = typeof data.prompt_id === "string" ? data.prompt_id : null;
+
+      if (message.type === "status") {
+        const status = isRecord(data.status) ? data.status : null;
+        const execInfo = status && isRecord(status.exec_info) ? status.exec_info : null;
+        const queueRemaining = numericValue(execInfo?.queue_remaining);
+        if (this.promptId && queueRemaining !== null) {
+          this.onProgress({
+            phase: "queued",
+            label: `ComfyUI reports ${queueRemaining} queued job${queueRemaining === 1 ? "" : "s"} remaining.`,
+            queueRemaining,
+          });
+        }
+        return;
+      }
+
+      if (!this.promptId || eventPromptId !== this.promptId) return;
+
+      if (message.type === "executing") {
+        const node = typeof data.node === "string" || typeof data.node === "number" ? String(data.node) : null;
+        if (!node) return;
+        this.onProgress({
+          phase: "executing",
+          label: POC_NODE_LABELS[node] ?? "ComfyUI is processing the edit workflow.",
+          progressValue: null,
+          progressMax: null,
+          percent: null,
+          estimatedSecondsRemaining: null,
+        });
+        return;
+      }
+
+      if (message.type === "progress") {
+        const value = numericValue(data.value);
+        const max = numericValue(data.max);
+        if (value === null || max === null || max <= 0) return;
+        if (this.firstSamplerProgressAt === null) this.firstSamplerProgressAt = Date.now();
+        const percent = Math.min(100, Math.max(0, Math.round((value / max) * 100)));
+        const elapsedMs = Date.now() - this.firstSamplerProgressAt;
+        const estimatedSecondsRemaining = value > 0 && value < max
+          ? Math.max(1, Math.ceil((elapsedMs / value) * (max - value) / 1_000))
+          : 0;
+        this.onProgress({
+          phase: "executing",
+          label: `Generating the edited image: ${value} of ${max} sampler steps complete.`,
+          progressValue: value,
+          progressMax: max,
+          percent,
+          estimatedSecondsRemaining,
+        });
+        return;
+      }
+
+      if (message.type === "progress_state") {
+        const nodes = isRecord(data.nodes) ? data.nodes : null;
+        if (!nodes) return;
+        const runningNode = Object.entries(nodes).find(([, state]) => isRecord(state) && state.state === "running");
+        if (!runningNode) return;
+        const [nodeId, rawState] = runningNode;
+        const state = rawState as Record<string, unknown>;
+        const value = numericValue(state.value);
+        const max = numericValue(state.max);
+        const isSampler = nodeId === "121";
+        if (isSampler && value !== null && max !== null && max > 0) {
+          if (this.firstSamplerProgressAt === null) this.firstSamplerProgressAt = Date.now();
+          const percent = Math.min(100, Math.max(0, Math.round((value / max) * 100)));
+          const elapsedMs = Date.now() - this.firstSamplerProgressAt;
+          const estimatedSecondsRemaining = value > 0 && value < max
+            ? Math.max(1, Math.ceil((elapsedMs / value) * (max - value) / 1_000))
+            : 0;
+          this.onProgress({
+            phase: "executing",
+            label: `Generating the edited image: ${value} of ${max} sampler steps complete.`,
+            progressValue: value,
+            progressMax: max,
+            percent,
+            estimatedSecondsRemaining,
+          });
+          return;
+        }
+
+        this.onProgress({
+          phase: "executing",
+          label: POC_NODE_LABELS[nodeId] ?? "ComfyUI is processing the edit workflow.",
+          progressValue: value,
+          progressMax: max,
+          percent: null,
+          estimatedSecondsRemaining: null,
+        });
+        return;
+      }
+
+      if (message.type === "execution_success") {
+        this.receivedTerminalEvent = true;
+        this.onProgress({ phase: "completed", label: "ComfyUI completed the edit; retrieving the result image." });
+      }
+    } catch {
+      // Unexpected remote payloads are deliberately ignored rather than exposed to the browser.
+    }
   }
 }
 
@@ -260,12 +454,13 @@ export async function uploadImageToComfyUI(
 export async function submitComfyUIWorkflow(
   workflow: Record<string, any>,
   diagnostics: ComfyUiPocDiagnostic[],
+  clientId?: string,
 ): Promise<{ promptId: string }> {
   diagnostic(diagnostics, "submission", "Submitting the fixed Qwen workflow to ComfyUI for validation.");
   const response = await fetch(`${COMFYUI_URL}/prompt`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ prompt: workflow }),
+    body: JSON.stringify({ prompt: workflow, ...(clientId ? { client_id: clientId } : {}) }),
   });
   const payload = await readJson<ComfyUiPromptResponse>(response);
 
@@ -347,13 +542,19 @@ export async function runComfyUIPOC(
   imageBuffer: Buffer,
   imageName: string,
   positivePrompt = "",
+  options: ComfyUiPocRunOptions = {},
 ): Promise<ComfyUiPocResult> {
   const diagnostics: ComfyUiPocDiagnostic[] = [];
+  const tracker = options.clientId && options.onProgress
+    ? new ComfyUiProgressTracker(options.clientId, options.onProgress)
+    : null;
 
   try {
+    await tracker?.connect();
     const uploadedImage = await uploadImageToComfyUI(imageBuffer, imageName, diagnostics);
     const workflow = buildQwenWorkflow(uploadedImage.inputFilename, positivePrompt);
-    const { promptId } = await submitComfyUIWorkflow(workflow, diagnostics);
+    const { promptId } = await submitComfyUIWorkflow(workflow, diagnostics, options.clientId);
+    tracker?.setPromptId(promptId);
     const outputs = await pollComfyUIResult(promptId, diagnostics);
     const outputImage = findOutputImage(outputs);
 
@@ -376,5 +577,7 @@ export async function runComfyUIPOC(
     if (error instanceof ComfyUiPocError) throw error;
     diagnostic(diagnostics, "failed", "The server could not complete the ComfyUI POC request.");
     throw new ComfyUiPocError("The ComfyUI POC request could not be completed.", diagnostics);
+  } finally {
+    tracker?.close();
   }
 }

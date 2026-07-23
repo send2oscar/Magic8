@@ -172,6 +172,12 @@
 - [x] Restore the Dashboard live task-log rendering required by existing Try On lifecycle tests before release.
 
 ## ComfyUI Desktop Workflow Integration
+- [x] Provide a downloadable sanitized copy of `POCComfyUI.tsx` with the Positive Prompt default left empty for permitted local customization.
+- [x] Assess a per-visit remote prompt-default source and only integrate it if its text is permitted for the apparel-editing POC.
+- [x] Implement a server-mediated, no-cache remote prompt fetch on each POC page visit with input limits, safe apparel validation, and frontend fallback behavior.
+- [x] Add regression coverage for accepted, rejected, unavailable, and overlong remote prompt-default responses.
+- [ ] Add server-mediated live ComfyUI queue/execution progress and a clearly labelled estimated remaining time to the POC Processing Log.
+- [ ] Stream truthful in-request ComfyUI POC stages to the Processing Log through a short-lived authenticated status query.
 - [x] Diagnose the current ComfyUI `/prompt` HTTP 400 response using the instance's returned validation details.
 - [x] Complete a verified corrected POC request contract that uploads to the remote ComfyUI endpoint and injects its returned filename into workflow node `78`.
 - [x] Verify that the POC processing-log panel renders safe server-side upload, validation, polling, and output-retrieval diagnostics on a real request.

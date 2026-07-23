@@ -8,6 +8,20 @@ import { Spinner } from '@/components/ui/spinner';
 import { trpc } from '@/lib/trpc';
 import { toast } from 'sonner';
 
+const EMPTY_TASK_ID = '00000000-0000-4000-8000-000000000000';
+
+function createPocTaskId() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return '10000000-1000-4000-8000-100000000000';
+}
+
+function formatEstimatedTime(seconds: number) {
+  if (seconds < 60) return `about ${seconds}s`;
+  return `about ${Math.ceil(seconds / 60)} min`;
+}
+
 export function POCComfyUI() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [positivePrompt, setPositivePrompt] = useState('');
@@ -18,13 +32,43 @@ export function POCComfyUI() {
     outputMimeType: string;
   } | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
+  const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const logsEndRef = useRef<HTMLDivElement>(null);
+  const seenLiveEventIds = useRef(new Set<number>());
+
+  const defaultPromptQuery = trpc.comfyuiPoc.defaultPrompt.useQuery(undefined, {
+    // Every new visit obtains the owner-controlled text again rather than
+    // inheriting a cached value from an earlier POC page mount.
+    staleTime: 0,
+    gcTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: false,
+    retry: false,
+  });
+
+  const liveStatusQuery = trpc.comfyuiPoc.getLiveStatus.useQuery(
+    { taskId: activeTaskId ?? EMPTY_TASK_ID },
+    {
+      enabled: Boolean(activeTaskId && isProcessing),
+      refetchInterval: isProcessing ? 750 : false,
+      refetchOnWindowFocus: false,
+      retry: false,
+    },
+  );
 
   // Auto-scroll logs to bottom
   useEffect(() => {
     logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [logs]);
+
+  useEffect(() => {
+    const remoteDefault = defaultPromptQuery.data;
+    if (!remoteDefault?.available) return;
+    // Do not overwrite a value the visitor has already entered while the
+    // per-visit request was still resolving.
+    setPositivePrompt(current => current.trim() ? current : remoteDefault.prompt);
+  }, [defaultPromptQuery.data?.available, defaultPromptQuery.data?.prompt]);
 
   const addLog = (message: string) => {
     const timestamp = new Date().toLocaleTimeString();
@@ -35,6 +79,15 @@ export function POCComfyUI() {
     diagnostics.forEach((entry) => addLog(`${entry.label}${entry.detail ? ` (${entry.detail})` : ''}`));
   };
 
+  useEffect(() => {
+    const events = liveStatusQuery.data?.events ?? [];
+    for (const event of events) {
+      if (seenLiveEventIds.current.has(event.id)) continue;
+      seenLiveEventIds.current.add(event.id);
+      addLog(event.label);
+    }
+  }, [liveStatusQuery.data?.events]);
+
   const processImageMutation = trpc.comfyuiPoc.processImage.useMutation({
     onSuccess: (data) => {
       addServerDiagnostics(data.diagnostics);
@@ -42,6 +95,7 @@ export function POCComfyUI() {
         addLog(`❌ ${data.message}`);
         toast.error(data.message);
         setIsProcessing(false);
+        setActiveTaskId(null);
         return;
       }
       setResult({
@@ -52,11 +106,13 @@ export function POCComfyUI() {
       addLog('✅ ComfyUI POC completed successfully.');
       toast.success('ComfyUI POC completed successfully.');
       setIsProcessing(false);
+      setActiveTaskId(null);
     },
     onError: (error) => {
       addLog(`❌ Error: ${error.message}`);
       toast.error(`Error: ${error.message}`);
       setIsProcessing(false);
+      setActiveTaskId(null);
     },
   });
 
@@ -66,6 +122,7 @@ export function POCComfyUI() {
       setSelectedFile(file);
       setResult(null);
       setLogs([]);
+      setActiveTaskId(null);
       addLog(`📁 Selected file: ${file.name} (${(file.size / 1024).toFixed(2)} KB)`);
     }
   };
@@ -78,6 +135,9 @@ export function POCComfyUI() {
 
     setIsProcessing(true);
     setLogs([]);
+    seenLiveEventIds.current.clear();
+    const taskId = createPocTaskId();
+    setActiveTaskId(taskId);
     addLog('Starting ComfyUI POC request.');
     addLog(`Preparing selected image: ${selectedFile.name}`);
 
@@ -92,6 +152,7 @@ export function POCComfyUI() {
         }
         addLog('Sending the image to the application server.');
         processImageMutation.mutate({
+          taskId,
           imageBase64: base64String,
           imageName: selectedFile.name,
           positivePrompt: positivePrompt || undefined,
@@ -102,6 +163,7 @@ export function POCComfyUI() {
       addLog(`❌ Failed to read file: ${error instanceof Error ? error.message : 'Unknown error'}`);
       toast.error('Failed to read file');
       setIsProcessing(false);
+      setActiveTaskId(null);
     }
   };
 
@@ -220,6 +282,7 @@ export function POCComfyUI() {
                     onClick={() => {
                       setResult(null);
                       setSelectedFile(null);
+                      setActiveTaskId(null);
                       if (fileInputRef.current) {
                         fileInputRef.current.value = '';
                       }
@@ -258,6 +321,27 @@ export function POCComfyUI() {
               </div>
             </CardHeader>
             <CardContent>
+              {isProcessing && (
+                <div
+                  className="mb-3 rounded-lg border border-blue-500/40 bg-blue-500/10 p-3 text-sm text-blue-100"
+                  role="status"
+                  aria-live="polite"
+                  data-testid="comfyui-live-status"
+                >
+                  <p className="font-semibold">{liveStatusQuery.data?.label ?? 'Starting the ComfyUI task…'}</p>
+                  <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-blue-200">
+                    {liveStatusQuery.data?.percent !== null && liveStatusQuery.data?.percent !== undefined && (
+                      <span>Progress: {liveStatusQuery.data.percent}%</span>
+                    )}
+                    {liveStatusQuery.data?.estimatedSecondsRemaining !== null && liveStatusQuery.data?.estimatedSecondsRemaining !== undefined && (
+                      <span>Estimated remaining: {formatEstimatedTime(liveStatusQuery.data.estimatedSecondsRemaining)} (estimate)</span>
+                    )}
+                    {liveStatusQuery.data?.queueRemaining !== null && liveStatusQuery.data?.queueRemaining !== undefined && (
+                      <span>Queue: {liveStatusQuery.data.queueRemaining}</span>
+                    )}
+                  </div>
+                </div>
+              )}
               <div className="bg-slate-900 rounded-lg p-4 h-96 overflow-y-auto font-mono text-xs text-slate-300 border border-slate-700">
                 {logs.length === 0 ? (
                   <p className="text-slate-500">Logs will appear here...</p>
