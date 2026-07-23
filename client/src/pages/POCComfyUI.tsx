@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -16,7 +16,19 @@ export function POCComfyUI() {
     promptId: string;
     outputBase64: string;
   } | null>(null);
+  const [logs, setLogs] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const logsEndRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll logs to bottom
+  useEffect(() => {
+    logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [logs]);
+
+  const addLog = (message: string) => {
+    const timestamp = new Date().toLocaleTimeString();
+    setLogs(prev => [...prev, `[${timestamp}] ${message}`]);
+  };
 
   const processImageMutation = trpc.comfyuiPoc.processImage.useMutation({
     onSuccess: (data) => {
@@ -24,10 +36,12 @@ export function POCComfyUI() {
         promptId: data.promptId,
         outputBase64: data.outputBase64,
       });
+      addLog('✅ Image processed successfully!');
       toast.success('Image processed successfully!');
       setIsProcessing(false);
     },
     onError: (error) => {
+      addLog(`❌ Error: ${error.message}`);
       toast.error(`Error: ${error.message}`);
       setIsProcessing(false);
     },
@@ -38,6 +52,8 @@ export function POCComfyUI() {
     if (file) {
       setSelectedFile(file);
       setResult(null);
+      setLogs([]);
+      addLog(`📁 Selected file: ${file.name} (${(file.size / 1024).toFixed(2)} KB)`);
     }
   };
 
@@ -48,11 +64,15 @@ export function POCComfyUI() {
     }
 
     setIsProcessing(true);
+    setLogs([]);
+    addLog('🚀 Starting image processing...');
+    addLog(`📤 Uploading image: ${selectedFile.name}`);
 
     try {
       const reader = new FileReader();
       reader.onload = (e) => {
         const base64String = (e.target?.result as string).split(',')[1];
+        addLog('🔄 Submitting to ComfyUI...');
         processImageMutation.mutate({
           imageBase64: base64String,
           imageName: selectedFile.name,
@@ -61,6 +81,7 @@ export function POCComfyUI() {
       };
       reader.readAsDataURL(selectedFile);
     } catch (error) {
+      addLog(`❌ Failed to read file: ${error instanceof Error ? error.message : 'Unknown error'}`);
       toast.error('Failed to read file');
       setIsProcessing(false);
     }
@@ -73,19 +94,25 @@ export function POCComfyUI() {
     link.href = `data:image/jpeg;base64,${result.outputBase64}`;
     link.download = `comfyui-output-${result.promptId}.jpg`;
     link.click();
+    addLog('💾 Result downloaded');
+  };
+
+  const clearLogs = () => {
+    setLogs([]);
+    addLog('📋 Logs cleared');
   };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4">
-      <div className="max-w-4xl mx-auto">
+      <div className="max-w-6xl mx-auto">
         <div className="mb-8">
           <h1 className="text-4xl font-bold text-white mb-2">ComfyUI POC</h1>
           <p className="text-slate-400">Test image upload and processing with local ComfyUI instance</p>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Upload Section */}
-          <Card className="bg-slate-800 border-slate-700">
+          <Card className="bg-slate-800 border-slate-700 lg:col-span-1">
             <CardHeader>
               <CardTitle className="text-white">Upload Image</CardTitle>
               <CardDescription>Select an image to process with Qwen workflow</CardDescription>
@@ -137,20 +164,11 @@ export function POCComfyUI() {
                   'Process Image'
                 )}
               </Button>
-
-              {/* Status */}
-              {isProcessing && (
-                <div className="bg-slate-700 rounded-lg p-4">
-                  <p className="text-slate-300 text-sm">
-                    Processing image with ComfyUI... This may take a minute.
-                  </p>
-                </div>
-              )}
             </CardContent>
           </Card>
 
           {/* Result Section */}
-          <Card className="bg-slate-800 border-slate-700">
+          <Card className="bg-slate-800 border-slate-700 lg:col-span-1">
             <CardHeader>
               <CardTitle className="text-white">Result</CardTitle>
               <CardDescription>Processed image output</CardDescription>
@@ -186,6 +204,7 @@ export function POCComfyUI() {
                       if (fileInputRef.current) {
                         fileInputRef.current.value = '';
                       }
+                      setLogs([]);
                     }}
                     variant="outline"
                     className="w-full text-slate-300 border-slate-600 hover:bg-slate-700"
@@ -198,6 +217,40 @@ export function POCComfyUI() {
                   <p className="text-slate-400">No result yet. Upload and process an image to see results here.</p>
                 </div>
               )}
+            </CardContent>
+          </Card>
+
+          {/* Live Logs Section */}
+          <Card className="bg-slate-800 border-slate-700 lg:col-span-1">
+            <CardHeader>
+              <div className="flex justify-between items-center">
+                <div>
+                  <CardTitle className="text-white">Live Logs</CardTitle>
+                  <CardDescription>Real-time processing logs</CardDescription>
+                </div>
+                <Button
+                  onClick={clearLogs}
+                  size="sm"
+                  variant="outline"
+                  className="text-slate-300 border-slate-600 hover:bg-slate-700"
+                >
+                  Clear
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="bg-slate-900 rounded-lg p-4 h-96 overflow-y-auto font-mono text-xs text-slate-300 border border-slate-700">
+                {logs.length === 0 ? (
+                  <p className="text-slate-500">Logs will appear here...</p>
+                ) : (
+                  logs.map((log, idx) => (
+                    <div key={idx} className="mb-1 text-slate-400">
+                      {log}
+                    </div>
+                  ))
+                )}
+                <div ref={logsEndRef} />
+              </div>
             </CardContent>
           </Card>
         </div>
@@ -223,6 +276,7 @@ export function POCComfyUI() {
                 <li>Build Qwen workflow JSON</li>
                 <li>Submit to ComfyUI /prompt endpoint</li>
                 <li>Poll /history endpoint for results</li>
+                <li>Search for output images in all nodes</li>
                 <li>Download processed image</li>
                 <li>Return result to frontend</li>
               </ol>

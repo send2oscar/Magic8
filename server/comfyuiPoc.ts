@@ -51,101 +51,41 @@ function buildQwenWorkflow(imagePath: string, positivePrompt: string = ''): Reco
     },
     "77": {
       "inputs": {
-        "prompt": "ugly, blurry, distorted, artifacts, bad, wrong, low quality, anime, digital art, semirealistic, cartoon, manga, drawing, fake, unreal, large breasts",
-        "clip": ["103", 1],
-        "vae": ["118", 2],
-        "image": ["78", 0]
+        "prompt": "",
+        "clip": ["103", 1]
       },
-      "class_type": "TextEncodeQwenImageEdit",
-      "_meta": { "title": "TextEncodeQwenImageEdit" }
+      "class_type": "CLIPTextEncode",
+      "_meta": { "title": "CLIP Text Encode (Negative)" }
     },
     "78": {
       "inputs": {
-        "image": path.basename(imagePath) // 使用文件名，ComfyUI 會在 input 目錄中查找
+        "image": imagePath
       },
       "class_type": "LoadImage",
       "_meta": { "title": "Load Image" }
     },
     "88": {
       "inputs": {
-        "pixels": ["93", 0],
+        "samples": ["121", 0],
         "vae": ["118", 2]
       },
       "class_type": "VAEEncode",
       "_meta": { "title": "VAE Encode" }
     },
-    "93": {
-      "inputs": {
-        "upscale_method": "lanczos",
-        "megapixels": 1,
-        "resolution_steps": 1,
-        "image": ["78", 0]
-      },
-      "class_type": "ImageScaleToTotalPixels",
-      "_meta": { "title": "Scale Image to Total Pixels" }
-    },
     "102": {
       "inputs": {
-        "filename": "%time_%basemodelname_%seed",
-        "path": "qwen_edit/%date",
-        "extension": "jpg",
-        "lossless_webp": false,
-        "quality_jpeg_or_webp": 100,
-        "optimize_png": false,
-        "embed_workflow": true,
-        "save_workflow_as_json": false,
-        "counter": 0,
-        "time_format": "%Y-%m-%d-%H%M%S",
-        "show_preview": true,
         "images": ["8", 0],
-        "metadata": ["106", 0]
+        "filename_prefix": "ComfyUI"
       },
-      "class_type": "Image Saver Simple",
-      "_meta": { "title": "Image Saver Simple" }
+      "class_type": "SaveImage",
+      "_meta": { "title": "Save Image" }
     },
     "103": {
       "inputs": {
-        "PowerLoraLoaderHeaderWidget": { "type": "PowerLoraLoaderHeaderWidget" },
-        "➕ Add Lora": "",
-        "model": ["118", 0],
-        "clip": ["118", 1]
+        "ckpt_name": "Qwen-Rapid-AIO-v11.4.safetensors"
       },
-      "class_type": "Power Lora Loader (rgthree)",
-      "_meta": { "title": "Power Lora Loader (rgthree)" }
-    },
-    "104": {
-      "inputs": {
-        "id": 0,
-        "widget_name": "ckpt_name",
-        "return_all": false,
-        "node_title": "",
-        "allowed_float_decimals": 2,
-        "any_input": ["118", 0]
-      },
-      "class_type": "WidgetToString",
-      "_meta": { "title": "Widget To String" }
-    },
-    "106": {
-      "inputs": {
-        "modelname": ["104", 0],
-        "positive": positivePrompt || "unknown",
-        "negative": "unknown",
-        "width": 512,
-        "height": 512,
-        "seed_value": ["117", 0],
-        "steps": ["115", 0],
-        "cfg": 1,
-        "sampler_name": "euler",
-        "scheduler_name": "beta57",
-        "denoise": 1,
-        "clip_skip": 0,
-        "additional_hashes": "",
-        "download_civitai_data": true,
-        "easy_remix": true,
-        "custom": ""
-      },
-      "class_type": "Image Saver Metadata",
-      "_meta": { "title": "Image Saver Metadata" }
+      "class_type": "CheckpointLoaderSimple",
+      "_meta": { "title": "Load Checkpoint" }
     },
     "115": {
       "inputs": { "value": 8 },
@@ -321,19 +261,32 @@ export async function runComfyUIPOC(
     console.log('[ComfyUI POC] 結果:', result);
 
     // 5. 下載輸出
-    // 假設輸出在 102 節點（Image Saver Simple）
+    // 搜索所有包含 images 的節點
     const outputs = result.outputs as Record<string, any>;
     let outputFilename = '';
     let outputSubfolder = '';
 
-    if (outputs['102'] && outputs['102'].images && outputs['102'].images[0]) {
-      const imageOutput = outputs['102'].images[0];
-      outputFilename = imageOutput.filename;
-      outputSubfolder = imageOutput.subfolder || '';
+    console.log('[ComfyUI POC] 搜索輸出節點，可用節點:', Object.keys(outputs));
+
+    // 遍歷所有輸出節點查找圖像
+    for (const [nodeId, nodeOutput] of Object.entries(outputs)) {
+      console.log(`[ComfyUI POC] 檢查節點 ${nodeId}:`, nodeOutput);
+      
+      if (nodeOutput && typeof nodeOutput === 'object' && 'images' in nodeOutput) {
+        const images = (nodeOutput as any).images;
+        if (Array.isArray(images) && images.length > 0) {
+          const imageOutput = images[0];
+          outputFilename = imageOutput.filename;
+          outputSubfolder = imageOutput.subfolder || '';
+          console.log(`[ComfyUI POC] 在節點 ${nodeId} 找到輸出圖像:`, outputFilename);
+          break;
+        }
+      }
     }
 
     if (!outputFilename) {
-      throw new Error('未找到輸出文件');
+      console.error('[ComfyUI POC] 未找到輸出文件，完整輸出:', JSON.stringify(outputs, null, 2));
+      throw new Error(`未找到輸出文件。可用節點: ${Object.keys(outputs).join(', ')}`);
     }
 
     const outputBuffer = await downloadComfyUIOutput(outputFilename, outputSubfolder);
