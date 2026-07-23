@@ -279,3 +279,6 @@
 - [x] Add and run regression coverage for long-running XXX jobs and the Dashboard new-photo reset control.
 - [x] Keep all timeout, background-finalization, and Dashboard reset changes on direct `http://oscarngan.ddns.net:8188` ComfyUI access; do not re-enable Bridge unless the user explicitly changes this instruction.
 - [ ] After this version is published, create the project-level one-minute Heartbeat for `/api/scheduled/finalize-comfyui` so long-running direct-ComfyUI tasks finalize to Gallery even after the Dashboard reloads.
+- [x] Verify without changing code whether Start Another New Task renders after Try On Now in the deployed Dashboard and document its actual display condition.
+- [x] Show Use Another Photo immediately when Try On Now begins, regardless of whether direct-ComfyUI submission has received a server acknowledgment.
+- [x] Add and run a Dashboard regression that verifies the reset control is visible while the start request is still unresolved.

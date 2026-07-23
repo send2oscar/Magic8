@@ -60,6 +60,7 @@ export default function Dashboard() {
   const [positivePrompt, setPositivePrompt] = useState("");
   const [activeQwenTaskId, setActiveQwenTaskId] = useState<number | null>(null);
   const [backgroundQwenError, setBackgroundQwenError] = useState<string | null>(null);
+  const [hasTaskSubmissionStarted, setHasTaskSubmissionStarted] = useState(false);
   const hasAppliedDefaultPrompt = useRef(false);
   const notifiedTerminalQwenTaskId = useRef<number | null>(null);
 
@@ -169,7 +170,7 @@ export default function Dashboard() {
     setLocation("/");
   };
 
-  const isPhotoSelectionLocked = isTryingOn || activeQwenTaskId !== null;
+  const isPhotoSelectionLocked = hasTaskSubmissionStarted || isTryingOn || activeQwenTaskId !== null;
 
   const handleShirtSelection = (shirtId: string) => {
     setSelectedShirt(shirtId);
@@ -260,6 +261,9 @@ export default function Dashboard() {
 
     if (tryOnInFlight.current) return;
 
+    // Lock the current workspace as soon as the user starts a valid request.
+    // This intentionally does not wait for a direct-ComfyUI acknowledgment.
+    setHasTaskSubmissionStarted(true);
     const isQwenEdit = selectedShirt === QWEN_EDIT_STYLE_ID;
     const requiredCredits = isQwenEdit ? 10 : 1;
 
@@ -433,7 +437,7 @@ export default function Dashboard() {
                     USE ANOTHER PHOTO
                   </Button>
                   <p className="text-xs text-muted-foreground">
-                    This reloads the workspace for a new task. Your existing XXX background task keeps running and will be saved to Gallery when it finishes.
+                    This reloads the workspace for a new task. Any XXX request already accepted by the server keeps running and will be saved to Gallery when it finishes.
                   </p>
                 </div>
               )}

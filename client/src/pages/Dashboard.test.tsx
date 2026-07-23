@@ -206,7 +206,22 @@ describe("Dashboard Try On Now lifecycle", () => {
     expect(document.querySelector<HTMLInputElement>("input[type=file]")?.disabled).toBe(true);
     expect(screen.getByRole("button", { name: "PHOTO LOCKED WHILE TASK RUNS" }).hasAttribute("disabled")).toBe(true);
     expect(screen.getByRole("button", { name: /use another photo/i })).toBeTruthy();
-    expect(screen.getByText(/existing XXX background task keeps running/i)).toBeTruthy();
+    expect(screen.getByText(/Any XXX request already accepted by the server keeps running/i)).toBeTruthy();
+  });
+
+  it("shows Use Another Photo as soon as an XXX request starts, before direct-ComfyUI acknowledges it", async () => {
+    mocks.balance = 15;
+    const request = deferred<{ taskId: number; status: "pending"; creditsRemaining: number; shirtApplied: string }>();
+    mocks.startQwenEdit.mockReturnValue(request.promise);
+    render(<Dashboard />);
+    await selectOwnedPhotoAndShirt("XXX (10 Credits)");
+
+    fireEvent.click(screen.getByRole("button", { name: "Try on now" }));
+
+    expect(mocks.startQwenEdit).toHaveBeenCalled();
+    expect(document.querySelector<HTMLInputElement>("input[type=file]")?.disabled).toBe(true);
+    expect(screen.getByRole("button", { name: /use another photo/i })).toBeTruthy();
+    expect(screen.getByText(/Any XXX request already accepted by the server keeps running/i)).toBeTruthy();
   });
 
   it("forwards unrestricted XXX prompt text unchanged to the durable background request", async () => {
