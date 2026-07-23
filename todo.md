@@ -172,12 +172,23 @@
 - [x] Restore the Dashboard live task-log rendering required by existing Try On lifecycle tests before release.
 
 ## ComfyUI Desktop Workflow Integration
+- [x] Add a Positive Prompt textarea directly below the authenticated Shirt Changer “Select Shirt” control.
+- [x] Route only the user-selected `XXX` shirt style through the existing Qwen ComfyUI POC, passing the submitted image and permitted apparel-editing prompt.
+- [x] Keep the selected `XXX` Qwen ComfyUI POC flow inline within the Dashboard rather than navigating to the standalone POC page.
+- [x] Deduct one credit only after a completed `XXX` result is safely persisted to the signed-in user’s gallery; never deduct for failed, cancelled, or unsaved work.
+- [x] Save each completed ComfyUI POC output to the signed-in user’s gallery using managed object storage and the existing gallery record model.
+- [x] Preserve server-side apparel prompt validation for the new main workflow and show a clear rejected-prompt message.
+- [x] Add automated and browser coverage for the conditional POC routing, prompt validation, and gallery-result persistence.
+- [x] Verify this enhancement exclusively with unit tests, mocked responses, and browser UI checks; do not send any test traffic to `oscarngan.ddns.net`.
+- [x] Add a mocked Dashboard UI regression asserting that a rejected `XXX` prompt produces the clear user-visible safety error.
+- [x] Add a mocked Dashboard UI regression asserting that a successful `XXX` completion exposes the automatically saved-result gallery action.
 - [x] Provide a downloadable sanitized copy of `POCComfyUI.tsx` with the Positive Prompt default left empty for permitted local customization.
 - [x] Assess a per-visit remote prompt-default source and only integrate it if its text is permitted for the apparel-editing POC.
 - [x] Implement a server-mediated, no-cache remote prompt fetch on each POC page visit with input limits, safe apparel validation, and frontend fallback behavior.
 - [x] Add regression coverage for accepted, rejected, unavailable, and overlong remote prompt-default responses.
 - [x] Diagnose and repair the reported deployed failure to load the permitted default text from `defaultPrompt.txt` on each POC page visit.
 - [x] Modified `isSafeRemotePrompt` to always return `true` as requested by the user.
+- [x] Restore `isSafeRemotePrompt` keyword restrictions after the temporary always-true configuration was removed.
 - [x] Add focused regression coverage for a slow first remote response that exceeds the previous four-second limit.
 - [ ] Publish the repaired prompt loader and verify a fresh visit to the published `/poc/comfyui` page populates the field from `defaultPrompt.txt`.
 - [ ] Add server-mediated live ComfyUI queue/execution progress and a clearly labelled estimated remaining time to the POC Processing Log.
@@ -190,7 +201,7 @@
 - [ ] Remediate the confirmed direct-ComfyUI exposure: the endpoint currently serves unauthenticated HTTP and does not provide HTTPS on port 8188; use an authenticated HTTPS boundary or the planned workstation bridge before launch.
 - [ ] Add a server-side ComfyUI client that uploads the selected private photo to ComfyUI, submits a controlled API-format workflow copy, and safely retrieves the named output image.
 - [ ] Persist ComfyUI prompt identifiers and terminal task status so processing can recover from a web request ending before the workstation finishes.
-- [ ] Connect the `XXX` selection to the ComfyUI workflow while preserving the existing Try On flow for other shirt styles.
+- [x] Connect the `XXX` selection to the ComfyUI workflow while preserving the existing Try On flow for other shirt styles.
 - [ ] Add focused automated coverage for ComfyUI input replacement, API submission, output retrieval, timeouts, and safe error handling.
 - [x] Perform a real end-to-end run against the configured workstation and document the required desktop-side network, authentication, and workflow settings.
 - [ ] Fix `XXX` to the supplied `QwenImageEditRapidv1.0` API workflow only; do not infer or accept a workflow selection from uploaded images or untrusted client input.

@@ -48,7 +48,8 @@ import {
 } from "./localBridgeQwenTask";
 import { ComfyUiPocError, runComfyUIPOC } from "./comfyuiPoc";
 import { createComfyUiPocLiveStatus, getComfyUiPocLiveStatus, updateComfyUiPocLiveStatus } from "./comfyuiPocLiveStatus";
-import { getComfyUiPocDefaultPrompt } from "./comfyuiPocDefaultPrompt";
+import { getComfyUiPocDefaultPrompt, isSafeRemotePrompt } from "./comfyuiPocDefaultPrompt";
+import { processDashboardQwenPoc } from "./dashboardQwenPoc";
 
 // Shirt styles available for try-on
 const SHIRT_STYLES = [
@@ -409,6 +410,13 @@ export const appRouter = router({
   // ComfyUI POC
   comfyuiPoc: router({
     defaultPrompt: publicProcedure.query(() => getComfyUiPocDefaultPrompt()),
+    processDashboardQwen: protectedProcedure
+      .input(z.object({
+        taskId: z.string().uuid(),
+        photoId: z.number().int().positive(),
+        positivePrompt: z.string().trim().max(2_000).optional(),
+      }))
+      .mutation(({ ctx, input }) => processDashboardQwenPoc({ ...input, userId: ctx.user.id })),
     getLiveStatus: protectedProcedure
       .input(z.object({ taskId: z.string().uuid() }))
       .query(({ ctx, input }) => getComfyUiPocLiveStatus(input.taskId, ctx.user.id)),
@@ -422,6 +430,12 @@ export const appRouter = router({
         })
       )
       .mutation(async ({ ctx, input }) => {
+        if (input.positivePrompt?.trim() && !isSafeRemotePrompt(input.positivePrompt)) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Use a non-explicit apparel-editing prompt that keeps the person and background unchanged.",
+          });
+        }
         createComfyUiPocLiveStatus(input.taskId, ctx.user.id);
         try {
           const imageBuffer = Buffer.from(input.imageBase64, 'base64');

@@ -2,6 +2,7 @@ import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
 import { advanceTryOnProgress, getTryOnProgressLabel } from "@/lib/tryOnProgress";
 import React, { useEffect, useRef, useState } from "react";
@@ -11,6 +12,7 @@ import { useAuth } from "@/_core/hooks/useAuth";
 
 const DEMO_PHOTO_URL = '/manus-storage/demo_person_31d5a68a.jpg';
 const QWEN_EDIT_STYLE_ID = "qwen-image-edit-rapid";
+const IDLE_COMFYUI_TASK_ID = "00000000-0000-4000-8000-000000000000";
 
 type SelectedPhoto = {
   id: number | null;
@@ -42,24 +44,22 @@ export default function Dashboard() {
   const [localTaskStages, setLocalTaskStages] = useState<LiveTaskStage[]>([]);
   const [tryOnStartedAt, setTryOnStartedAt] = useState<number | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
-  const [activeQwenTaskId, setActiveQwenTaskId] = useState<number | null>(null);
+  const [positivePrompt, setPositivePrompt] = useState("");
+  const [activeComfyUiTaskId, setActiveComfyUiTaskId] = useState<string | null>(null);
+  const hasAppliedDefaultPrompt = useRef(false);
 
   // tRPC queries and mutations
   const creditsQuery = trpc.credits.getBalance.useQuery();
   const photosQuery = trpc.photos.list.useQuery();
   const shirtsQuery = trpc.shirts.list.useQuery();
   const tryOnMutation = trpc.tryOn.process.useMutation();
-  const startQwenEditMutation = trpc.comfyui.startQwenEdit.useMutation();
-  const activeTaskQuery = trpc.tryOn.activeTask.useQuery(undefined, {
-    enabled: isAuthenticated,
-    refetchInterval: isTryingOn ? 1_000 : 10_000,
-    refetchOnWindowFocus: false,
-  });
-  const qwenTaskStatusQuery = trpc.comfyui.qwenEditStatus.useQuery(
-    { taskId: activeQwenTaskId ?? 0 },
+  const defaultPromptQuery = trpc.comfyuiPoc.defaultPrompt.useQuery(undefined, { refetchOnWindowFocus: false });
+  const processDashboardQwenMutation = trpc.comfyuiPoc.processDashboardQwen.useMutation();
+  const comfyUiLiveStatusQuery = trpc.comfyuiPoc.getLiveStatus.useQuery(
+    { taskId: activeComfyUiTaskId ?? IDLE_COMFYUI_TASK_ID },
     {
-      enabled: activeQwenTaskId !== null,
-      refetchInterval: activeQwenTaskId !== null ? 2_500 : false,
+      enabled: activeComfyUiTaskId !== null,
+      refetchInterval: activeComfyUiTaskId !== null ? 1_000 : false,
       refetchOnWindowFocus: false,
     },
   );
@@ -94,35 +94,10 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => {
-    const activeTask = activeTaskQuery.data;
-    if (!activeTask || activeTask.shirtStyle !== QWEN_EDIT_STYLE_ID || activeTask.id === activeQwenTaskId) return;
-    setActiveQwenTaskId(activeTask.id);
-    setIsTryingOn(true);
-  }, [activeQwenTaskId, activeTaskQuery.data]);
-
-  useEffect(() => {
-    const task = qwenTaskStatusQuery.data;
-    if (!task || activeQwenTaskId === null) return;
-
-    if (task.status === "success") {
-      setTryOnProgress(100);
-      setResultData({ resultImageUrl: task.resultImageUrl, shirtApplied: task.shirtApplied });
-      setShowResult(true);
-      setActiveQwenTaskId(null);
-      setIsTryingOn(false);
-      setLocalTaskStages([]);
-      creditsQuery.refetch();
-      toast.success("XXX edit completed!");
-    }
-
-    if (task.status === "failed") {
-      setActiveQwenTaskId(null);
-      setIsTryingOn(false);
-      setLocalTaskStages([]);
-      creditsQuery.refetch();
-      toast.error(task.message);
-    }
-  }, [activeQwenTaskId, creditsQuery, qwenTaskStatusQuery.data]);
+    if (hasAppliedDefaultPrompt.current || defaultPromptQuery.isLoading) return;
+    hasAppliedDefaultPrompt.current = true;
+    if (defaultPromptQuery.data?.prompt) setPositivePrompt(defaultPromptQuery.data.prompt);
+  }, [defaultPromptQuery.data?.prompt, defaultPromptQuery.isLoading]);
 
   if (loading) {
     return (
@@ -242,7 +217,6 @@ export default function Dashboard() {
     }
 
     const isQwenEdit = selectedShirt === QWEN_EDIT_STYLE_ID;
-    let qwenQueued = false;
     tryOnInFlight.current = true;
     setIsTryingOn(true);
     setLocalTaskStages([
@@ -251,15 +225,30 @@ export default function Dashboard() {
     ]);
     try {
       if (isQwenEdit) {
-        const task = await startQwenEditMutation.mutateAsync({ photoId: selectedPhoto.id });
-        qwenQueued = true;
-        setActiveQwenTaskId(task.taskId);
+        const taskId = crypto.randomUUID();
+        setActiveComfyUiTaskId(taskId);
         setLocalTaskStages([
           { key: "request_sent", label: "XXX request sent", state: "completed", timestamp: Date.now() },
-          { key: "qwen_processing", label: "Qwen workstation is processing your image", state: "active", timestamp: Date.now() },
+          { key: "qwen_processing", label: "Qwen ComfyUI is processing your image", state: "active", timestamp: Date.now() },
         ]);
-        creditsQuery.refetch();
-        toast.success("XXX edit started. You can keep this page open while Qwen processes your image.");
+        const result = await processDashboardQwenMutation.mutateAsync({
+          taskId,
+          photoId: selectedPhoto.id,
+          positivePrompt: positivePrompt.trim() || undefined,
+        });
+        if (!result.success) {
+          toast.error(result.message);
+          return;
+        }
+        setTryOnProgress(100);
+        setResultData({
+          resultImageUrl: result.resultImageUrl,
+          shirtApplied: result.shirtApplied,
+          savedToGallery: true,
+        });
+        setShowResult(true);
+        await Promise.all([creditsQuery.refetch(), photosQuery.refetch()]);
+        toast.success("XXX edit completed and saved to your gallery.");
         return;
       }
 
@@ -279,17 +268,33 @@ export default function Dashboard() {
       toast.error(error?.message || "Failed to process try-on");
       console.error(error);
     } finally {
-      if (!qwenQueued) {
-        setIsTryingOn(false);
-        setLocalTaskStages([]);
-      }
+      setActiveComfyUiTaskId(null);
+      setIsTryingOn(false);
+      setLocalTaskStages([]);
       tryOnInFlight.current = false;
     }
   };
 
-  const liveTaskStages = activeTaskQuery.data?.stages?.length
-    ? activeTaskQuery.data.stages as LiveTaskStage[]
+  const liveTaskStages: LiveTaskStage[] = comfyUiLiveStatusQuery.data?.events?.length
+    ? comfyUiLiveStatusQuery.data.events.map((event): LiveTaskStage => ({
+      key: `comfyui-${event.id}`,
+      label: event.label,
+      state: event.label === comfyUiLiveStatusQuery.data?.label
+        ? comfyUiLiveStatusQuery.data?.phase === "failed"
+          ? "error"
+          : comfyUiLiveStatusQuery.data?.phase === "completed"
+            ? "completed"
+            : "active"
+        : "completed",
+      timestamp: event.at,
+    }))
     : localTaskStages;
+  const liveProgress = activeComfyUiTaskId && comfyUiLiveStatusQuery.data?.percent !== null && comfyUiLiveStatusQuery.data?.percent !== undefined
+    ? comfyUiLiveStatusQuery.data.percent
+    : tryOnProgress;
+  const liveProgressLabel = activeComfyUiTaskId && comfyUiLiveStatusQuery.data?.label
+    ? comfyUiLiveStatusQuery.data.label
+    : getTryOnProgressLabel(liveProgress);
 
   return (
     <div className="min-h-screen bg-background">
@@ -413,6 +418,18 @@ export default function Dashboard() {
                     <p className="mt-1 text-xs text-muted-foreground">Qwen edit</p>
                   </button>
                 </div>
+                <div className="space-y-2 border-t border-accent/20 pt-4">
+                  <label htmlFor="positive-prompt" className="text-sm font-bold text-foreground">POSITIVE PROMPT <span className="text-muted-foreground">(OPTIONAL)</span></label>
+                  <Textarea
+                    id="positive-prompt"
+                    value={positivePrompt}
+                    onChange={(event) => setPositivePrompt(event.target.value)}
+                    maxLength={2000}
+                    placeholder="e.g. Change the shirt to yellow; keep the person and background unchanged."
+                    className="min-h-24 resize-y border-accent/40 bg-background/50 text-foreground focus-visible:ring-secondary"
+                  />
+                  <p className="text-xs text-muted-foreground">Used only for the XXX Qwen ComfyUI edit. Use a non-explicit apparel-editing instruction.</p>
+                </div>
               </div>
             </Card>
 
@@ -424,20 +441,20 @@ export default function Dashboard() {
                   onClick={handleTryOn}
                   disabled={isTryingOn || !selectedPhoto || !selectedShirt}
                   aria-busy={isTryingOn}
-                  aria-label={isTryingOn ? `${getTryOnProgressLabel(tryOnProgress)}: ${tryOnProgress}% complete` : "Try on now"}
+                  aria-label={isTryingOn ? `${liveProgressLabel}: ${liveProgress}% complete` : "Try on now"}
                   className="relative w-full overflow-hidden px-6 py-4 bg-accent text-background font-bold border-2 border-accent text-lg"
                 >
                   {isTryingOn && (
                     <span
                       aria-hidden="true"
                       className="absolute inset-y-0 left-0 bg-background/20 transition-[width] duration-1000 ease-out"
-                      style={{ width: `${tryOnProgress}%` }}
+                      style={{ width: `${liveProgress}%` }}
                     />
                   )}
                   <span
                     className="relative z-10"
                   >
-                    {isTryingOn ? `${getTryOnProgressLabel(tryOnProgress)} • ${tryOnProgress}%` : "TRY ON NOW"}
+                    {isTryingOn ? `${liveProgressLabel} • ${liveProgress}%` : "TRY ON NOW"}
                   </span>
                 </Button>
                 {isTryingOn && (
@@ -459,9 +476,11 @@ export default function Dashboard() {
                       ))}
                     </ol>
                     <p className="text-xs text-muted-foreground">
-                      {tryOnProgress >= 92
-                        ? "The AI provider is still working. This request will remain open until it returns a result or a safe failure."
-                        : "Preparing your edit. The current server-confirmed stage appears above."}
+                      {activeComfyUiTaskId
+                        ? "XXX results are saved to your private gallery and one credit is deducted only after that save succeeds."
+                        : liveProgress >= 92
+                          ? "The AI provider is still working. This request will remain open until it returns a result or a safe failure."
+                          : "Preparing your edit. The current server-confirmed stage appears above."}
                     </p>
                   </div>
                 )}
@@ -482,6 +501,7 @@ export default function Dashboard() {
               <div className="space-y-4">
                 <img src={resultData.resultImageUrl} alt="Try-on result" className="w-full h-auto rounded-lg" />
                 <p className="text-sm text-muted-foreground">Shirt applied: {resultData.shirtApplied}</p>
+                {resultData?.savedToGallery && <p className="text-sm text-secondary">Saved automatically to your private gallery. One credit was deducted after this result was stored.</p>}
               </div>
             ) : (
               <div className="text-center text-destructive">No result image available.</div>
@@ -489,11 +509,7 @@ export default function Dashboard() {
           </div>
           <div className="flex justify-end gap-2 p-6 pt-0">
             <Button onClick={() => setShowResult(false)} className="bg-secondary text-background">CLOSE</Button>
-            <Button onClick={() => {
-              // Implement save to gallery logic here
-              toast.info("Save to gallery feature coming soon!");
-              setShowResult(false);
-            }} className="bg-accent text-background">SAVE TO GALLERY</Button>
+            {resultData?.savedToGallery && <Button onClick={() => setLocation("/gallery")} className="bg-accent text-background">VIEW GALLERY</Button>}
           </div>
         </DialogContent>
       </Dialog>
