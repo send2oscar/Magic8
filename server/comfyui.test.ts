@@ -1,63 +1,69 @@
+import axios from "axios";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { checkComfyUiConnection, getApprovedQwenOutput } from "./comfyui";
 import { APPROVED_QWEN_CHECKPOINT, createApprovedQwenWorkflow, QWEN_INPUT_NODE_ID, QWEN_PROMPT_NODE_ID } from "./comfyuiQwenWorkflow";
 import { ENV } from "./_core/env";
 
-describe("approved ComfyUI connection", () => {
+const mocks = vi.hoisted(() => ({ request: vi.fn(), get: vi.fn() }));
+
+vi.mock("axios", () => ({
+  default: {
+    request: mocks.request,
+    get: mocks.get,
+  },
+}));
+
+function axiosResponse(data: unknown, status = 200) {
+  return { status, data: Buffer.from(JSON.stringify(data)), headers: { "content-type": "application/json" } } as never;
+}
+
+describe("direct ComfyUI connection", () => {
   const originalUrl = ENV.comfyuiServerUrl;
   const originalToken = ENV.comfyuiApiToken;
 
   afterEach(() => {
     ENV.comfyuiServerUrl = originalUrl;
     ENV.comfyuiApiToken = originalToken;
-    vi.unstubAllGlobals();
-    vi.restoreAllMocks();
+    vi.clearAllMocks();
   });
 
-  it("calls the lightweight health endpoint with the configured bearer token", async () => {
-    ENV.comfyuiServerUrl = "https://comfyui.example.test";
-    ENV.comfyuiApiToken = "test-comfyui-token";
-    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ system: {} }), { status: 200 }));
-    vi.stubGlobal("fetch", fetchMock);
+  it("uses the configured HTTP health endpoint without a token when the direct server is public", async () => {
+    ENV.comfyuiServerUrl = "http://oscarngan.ddns.net:8188";
+    ENV.comfyuiApiToken = "";
+    mocks.request.mockResolvedValue(axiosResponse({ system: {} }));
 
     await checkComfyUiConnection();
 
-    expect(fetchMock).toHaveBeenCalledWith(
-      new URL("https://comfyui.example.test/system_stats"),
-      expect.objectContaining({
-        headers: expect.any(Headers),
-      }),
-    );
-    const headers = fetchMock.mock.calls[0][1].headers as Headers;
-    expect(headers.get("Authorization")).toBe("Bearer test-comfyui-token");
+    expect(mocks.request).toHaveBeenCalledWith(expect.objectContaining({
+      url: "http://oscarngan.ddns.net:8188/system_stats",
+      method: "GET",
+    }));
+    expect(mocks.request.mock.calls[0][0].headers.Authorization).toBeUndefined();
   });
 
-  it("rejects a non-HTTPS ComfyUI endpoint before sending any credential", async () => {
-    ENV.comfyuiServerUrl = "http://comfyui.example.test:8188";
+  it("includes a bearer token only when direct ComfyUI authentication is configured", async () => {
+    ENV.comfyuiServerUrl = "http://oscarngan.ddns.net:8188";
     ENV.comfyuiApiToken = "test-comfyui-token";
-    const fetchMock = vi.fn();
-    vi.stubGlobal("fetch", fetchMock);
+    mocks.request.mockResolvedValue(axiosResponse({ system: {} }));
 
-    await expect(checkComfyUiConnection()).rejects.toThrow("must use HTTPS");
-    expect(fetchMock).not.toHaveBeenCalled();
+    await checkComfyUiConnection();
+
+    expect(mocks.request.mock.calls[0][0].headers.authorization).toBe("Bearer test-comfyui-token");
   });
 
-  it("creates a server-controlled workflow with a fixed checkpoint and safe apparel-edit baseline", () => {
-    const workflow = createApprovedQwenWorkflow("shirt-changer-input.png", "make the shirt blue");
+  it("creates the fixed Qwen workflow while forwarding the entered edit prompt unchanged", () => {
+    const prompt = "Keep this prompt exactly as entered — no filter, substitution, or preface.";
+    const workflow = createApprovedQwenWorkflow("shirt-changer-input.png", prompt);
 
     expect(workflow[QWEN_INPUT_NODE_ID].inputs.image).toBe("shirt-changer-input.png");
-    expect(workflow[QWEN_PROMPT_NODE_ID].inputs.prompt).toContain("make the shirt blue");
+    expect(workflow[QWEN_PROMPT_NODE_ID].inputs.prompt).toContain(prompt);
     expect(workflow["118"].inputs.ckpt_name).toBe(APPROVED_QWEN_CHECKPOINT);
     expect(() => createApprovedQwenWorkflow("../unsafe.png")).toThrow("invalid uploaded filename");
-    expect(createApprovedQwenWorkflow("shirt-changer-input.png", "remove all clothing")[QWEN_PROMPT_NODE_ID].inputs.prompt).toContain("remove all clothing");
   });
 
-  it("recognizes an explicit ComfyUI execution failure without exposing remote diagnostics", async () => {
-    ENV.comfyuiServerUrl = "https://comfyui.example.test";
-    ENV.comfyuiApiToken = "test-comfyui-token";
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
-      task: { status: { status_str: "error" } },
-    }), { status: 200 })));
+  it("recognizes an explicit direct-ComfyUI execution failure", async () => {
+    ENV.comfyuiServerUrl = "http://oscarngan.ddns.net:8188";
+    mocks.request.mockResolvedValue(axiosResponse({ task: { status: { status_str: "error" } } }));
 
     await expect(getApprovedQwenOutput("task")).rejects.toThrow("failed image edit");
   });

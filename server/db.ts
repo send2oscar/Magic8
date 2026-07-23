@@ -262,6 +262,7 @@ export type ComfyUiTaskMetadata = {
   promptId: string;
   uploadedFilename: string;
   queuedAt: number;
+  positivePrompt?: string;
 };
 
 type PersistedTryOnTaskState = {

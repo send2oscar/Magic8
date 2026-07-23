@@ -45,9 +45,8 @@ import {
   buildCompletedBridgeStages,
   failLocalBridgeTaskForUser,
   parseLocalBridgeStages,
-  refreshLocalBridgeQwenTask,
-  startLocalBridgeQwenTask,
 } from "./localBridgeQwenTask";
+import { refreshApprovedQwenTask, startApprovedQwenTask } from "./comfyuiTask";
 import { ComfyUiPocError, runComfyUIPOC } from "./comfyuiPoc";
 import { createComfyUiPocLiveStatus, getComfyUiPocLiveStatus, updateComfyUiPocLiveStatus } from "./comfyuiPocLiveStatus";
 import { getComfyUiPocDefaultPrompt } from "./comfyuiPocDefaultPrompt";
@@ -115,10 +114,10 @@ export const appRouter = router({
   comfyui: router({
     startQwenEdit: protectedProcedure
       .input(z.object({ photoId: z.number().int().positive(), positivePrompt: z.string().max(1_000_000).optional() }))
-      .mutation(({ ctx, input }) => startLocalBridgeQwenTask(ctx.user.id, input.photoId, input.positivePrompt)),
+      .mutation(({ ctx, input }) => startApprovedQwenTask(ctx.user.id, input.photoId, input.positivePrompt)),
     qwenEditStatus: protectedProcedure
       .input(z.object({ taskId: z.number().int().positive() }))
-      .query(({ ctx, input }) => refreshLocalBridgeQwenTask(ctx.user.id, input.taskId)),
+      .query(({ ctx, input }) => refreshApprovedQwenTask(ctx.user.id, input.taskId)),
   }),
   bridge: router({
     /** Owner-only status used to guide pairing in the Dashboard. */

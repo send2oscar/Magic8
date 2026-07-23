@@ -1,3 +1,4 @@
+import axios from "axios";
 import { ENV } from "./_core/env";
 import { storageGetSignedUrl } from "./storage";
 import { createApprovedQwenWorkflow, QWEN_OUTPUT_NODE_ID } from "./comfyuiQwenWorkflow";
@@ -20,16 +21,12 @@ export class ComfyUiRemoteError extends Error {
   }
 }
 
-type ComfyUiConfig = { baseUrl: URL; token: string };
+type ComfyUiConfig = { baseUrl: URL; token?: string };
 
 function getComfyUiConfig(): ComfyUiConfig {
   if (!ENV.comfyuiServerUrl) {
     throw new ComfyUiConfigurationError("ComfyUI is not configured for this website.");
   }
-  if (!ENV.comfyuiApiToken) {
-    throw new ComfyUiConfigurationError("ComfyUI authentication is not configured for this website.");
-  }
-
   let baseUrl: URL;
   try {
     baseUrl = new URL(ENV.comfyuiServerUrl);
@@ -37,11 +34,11 @@ function getComfyUiConfig(): ComfyUiConfig {
     throw new ComfyUiConfigurationError("The ComfyUI endpoint URL is invalid.");
   }
 
-  if (baseUrl.protocol !== "https:") {
-    throw new ComfyUiConfigurationError("The ComfyUI endpoint must use HTTPS.");
+  if (baseUrl.protocol !== "http:" && baseUrl.protocol !== "https:") {
+    throw new ComfyUiConfigurationError("The ComfyUI endpoint must use HTTP or HTTPS.");
   }
 
-  return { baseUrl, token: ENV.comfyuiApiToken };
+  return { baseUrl, ...(ENV.comfyuiApiToken ? { token: ENV.comfyuiApiToken } : {}) };
 }
 
 function apiUrl(path: string, search?: URLSearchParams): URL {
@@ -55,9 +52,29 @@ function apiUrl(path: string, search?: URLSearchParams): URL {
 async function comfyFetch(path: string, init: RequestInit = {}, search?: URLSearchParams): Promise<Response> {
   const { token } = getComfyUiConfig();
   const headers = new Headers(init.headers);
-  headers.set("Authorization", `Bearer ${token}`);
+  if (token) headers.set("Authorization", `Bearer ${token}`);
   if (!headers.has("Accept")) headers.set("Accept", "application/json");
-  return fetch(apiUrl(path, search), { ...init, headers, signal: init.signal ?? AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
+  try {
+    const response = await axios.request<ArrayBuffer>({
+      url: apiUrl(path, search).toString(),
+      method: init.method ?? "GET",
+      headers: Object.fromEntries(headers.entries()),
+      data: init.body,
+      timeout: REQUEST_TIMEOUT_MS,
+      responseType: "arraybuffer",
+      validateStatus: () => true,
+      maxContentLength: MAX_RESULT_BYTES + 1_024,
+      maxBodyLength: MAX_SOURCE_BYTES + 1_024,
+    });
+    const responseHeaders = new Headers();
+    for (const [key, value] of Object.entries(response.headers)) {
+      if (typeof value === "string") responseHeaders.set(key, value);
+    }
+    return new Response(response.data, { status: response.status, headers: responseHeaders });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new ComfyUiRemoteError(`ComfyUI could not be reached: ${message}`);
+  }
 }
 
 async function readJson(response: Response): Promise<Record<string, unknown>> {
@@ -109,15 +126,25 @@ export async function checkComfyUiConnection(): Promise<void> {
 
 async function uploadSourceImage(photoKey: string): Promise<string> {
   const signedSourceUrl = await storageGetSignedUrl(photoKey);
-  const sourceResponse = await fetch(signedSourceUrl, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
-  if (!sourceResponse.ok) throw new ComfyUiRemoteError("The selected source image could not be read from storage.");
+  let sourceResponse: Awaited<ReturnType<typeof axios.get<ArrayBuffer>>>;
+  try {
+    sourceResponse = await axios.get<ArrayBuffer>(signedSourceUrl, {
+      timeout: REQUEST_TIMEOUT_MS,
+      responseType: "arraybuffer",
+      validateStatus: () => true,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new ComfyUiRemoteError(`The selected source image could not be read from storage: ${message}`);
+  }
+  if (sourceResponse.status < 200 || sourceResponse.status >= 300) throw new ComfyUiRemoteError("The selected source image could not be read from storage.");
 
-  const sourceBytes = await sourceResponse.arrayBuffer();
+  const sourceBytes = sourceResponse.data;
   if (!sourceBytes.byteLength || sourceBytes.byteLength > MAX_SOURCE_BYTES) {
     throw new ComfyUiRemoteError("The selected source image is too large for ComfyUI processing.");
   }
 
-  const sourceContentType = imageContentType(sourceResponse.headers.get("content-type"), photoKey);
+  const sourceContentType = imageContentType(String(sourceResponse.headers["content-type"] ?? ""), photoKey);
   const uploadFilename = `shirt-changer-${crypto.randomUUID()}.${extensionFor(sourceContentType, photoKey)}`;
   const form = new FormData();
   form.set("image", new Blob([sourceBytes], { type: sourceContentType }), uploadFilename);
@@ -128,12 +155,12 @@ async function uploadSourceImage(photoKey: string): Promise<string> {
 }
 
 /** Uploads a user-owned S3 photo and queues only the approved XXX Qwen workflow. */
-export async function submitApprovedQwenEdit(photoKey: string): Promise<ComfyUiPrompt> {
+export async function submitApprovedQwenEdit(photoKey: string, positivePrompt = ""): Promise<ComfyUiPrompt> {
   const uploadedFilename = await uploadSourceImage(photoKey);
   const promptResponse = await readJson(await comfyFetch("/prompt", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ prompt: createApprovedQwenWorkflow(uploadedFilename), client_id: crypto.randomUUID() }),
+    body: JSON.stringify({ prompt: createApprovedQwenWorkflow(uploadedFilename, positivePrompt), client_id: crypto.randomUUID() }),
   }));
   const promptId = safeOutputPart(promptResponse.prompt_id, "prompt identifier");
   return { promptId, uploadedFilename };

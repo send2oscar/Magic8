@@ -279,8 +279,8 @@ export default function Dashboard() {
     try {
       if (isQwenEdit) {
         setLocalTaskStages([
-          { key: "request_sent", label: "XXX request sent", state: "completed", timestamp: Date.now() },
-          { key: "bridge_queue", label: "Waiting for the local Qwen workstation", state: "active", detail: "The paired workstation will collect this task shortly.", timestamp: Date.now() },
+          { key: "XXX request sent", label: "XXX request sent", state: "completed", timestamp: Date.now() },
+          { key: "comfy_queue", label: "Sending the XXX edit to ComfyUI", state: "active", detail: "The application server is submitting the fixed Qwen workflow directly to ComfyUI.", timestamp: Date.now() },
         ]);
         const result = await startQwenEditMutation.mutateAsync({
           photoId: selectedPhoto.id,
@@ -319,7 +319,9 @@ export default function Dashboard() {
   const isBackgroundQwenTask = activeQwenTaskId !== null;
   const hasVisibleTask = isTryingOn || isBackgroundQwenTask;
   const qwenTaskStatus = qwenEditStatusQuery.data;
-  const qwenTaskStages = qwenTaskStatus && "stages" in qwenTaskStatus ? qwenTaskStatus.stages : undefined;
+  const qwenTaskStages = qwenTaskStatus && "stages" in qwenTaskStatus && Array.isArray(qwenTaskStatus.stages)
+    ? qwenTaskStatus.stages as LiveTaskStage[]
+    : undefined;
   const qwenTaskMessage = qwenTaskStatus && "message" in qwenTaskStatus ? qwenTaskStatus.message : undefined;
   const qwenEstimatedSecondsRemaining = qwenTaskStatus && "estimatedSecondsRemaining" in qwenTaskStatus
     ? qwenTaskStatus.estimatedSecondsRemaining
@@ -497,7 +499,7 @@ export default function Dashboard() {
                       {isBackgroundQwenTask ? (
                         <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
                           <span>Background task #{activeQwenTaskId}</span>
-                          <span>Estimated remaining: {typeof qwenEstimatedSecondsRemaining === "number" ? formatEstimatedTime(qwenEstimatedSecondsRemaining) : "awaiting workstation estimate"}</span>
+                          <span>Estimated remaining: {typeof qwenEstimatedSecondsRemaining === "number" ? formatEstimatedTime(qwenEstimatedSecondsRemaining) : "awaiting ComfyUI estimate"}</span>
                         </div>
                       ) : (
                         <p className="text-xs text-muted-foreground">{elapsedSeconds}s elapsed</p>

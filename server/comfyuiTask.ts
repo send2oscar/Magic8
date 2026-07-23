@@ -60,10 +60,10 @@ function failStages(stages: TryOnTaskStage[], message: string): TryOnTaskStage[]
 }
 
 function safeErrorMessage(error: unknown): string {
-  if (error instanceof ComfyUiConfigurationError) {
-    return "The Qwen workstation connection is not ready yet. Your credit has been returned.";
-  }
-  return "The Qwen edit could not be completed. Your credit has been returned.";
+  const detail = error instanceof Error && error.message
+    ? error.message
+    : "The Qwen edit could not be completed.";
+  return `${detail} Your 10 credits have been returned.`;
 }
 
 async function refundAndFail(
@@ -79,8 +79,9 @@ async function refundAndFail(
   await updateTryOnHistory(historyId, { status: "failed", creditsDeducted: 0 });
 }
 
-/** Creates a durable Qwen task; no workflow or prompt may be supplied by the browser. */
-export async function startApprovedQwenTask(userId: number, photoId: number) {
+/** Creates a durable direct-ComfyUI Qwen task using the fixed approved workflow. */
+export async function startApprovedQwenTask(userId: number, photoId: number, positivePrompt?: string) {
+  const prompt = positivePrompt ?? "";
   const balance = await getUserCredits(userId);
   if (balance < QWEN_EDIT_CREDIT_COST) {
     throw new TRPCError({ code: "FORBIDDEN", message: `Insufficient credits. You need at least ${QWEN_EDIT_CREDIT_COST} credits to use XXX.` });
@@ -120,12 +121,13 @@ export async function startApprovedQwenTask(userId: number, photoId: number) {
 
     stages = advanceStage(stages, "source_upload", "Sending the selected photo to Qwen");
     await updateTryOnTaskStages(historyId, stages);
-    const job = await submitApprovedQwenEdit(photo.photoKey);
+    const job = await submitApprovedQwenEdit(photo.photoKey, prompt);
     const metadata: ComfyUiTaskMetadata = {
       kind: QWEN_EDIT_STYLE_ID,
       promptId: job.promptId,
       uploadedFilename: job.uploadedFilename,
       queuedAt: Date.now(),
+      positivePrompt: prompt,
     };
     stages = advanceStage(stages, "qwen_queued", "Qwen image edit is in progress", "Your result will appear automatically when it is ready.");
     await updateTryOnTaskStages(historyId, stages, metadata);
