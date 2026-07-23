@@ -254,3 +254,9 @@
 - [x] Add an accessible click-to-enlarge Gallery image preview for both uploaded and generated photos.
 - [x] Add per-image Gallery download controls with descriptive, stable filenames.
 - [x] Save the completed Gallery changes and synchronize the current branch to the configured GitHub remote.
+- [x] Diagnose the ComfyUI result-return `Unexpected token '<'` JSON-parsing error without changing application or server configuration.
+- [ ] Enforce a 10-credit charge only for XXX at the server mutation boundary; keep all five standard shirt styles at 1 credit.
+- [ ] Remove the Dashboard’s post-generation result preview and save completed images directly to the private Gallery.
+- [ ] Show the specified Gallery guidance immediately after the user starts a try-on request.
+- [ ] Add regression coverage for the XXX 10-credit rule, standard 1-credit rule, Gallery-only completion, and start-request notice.
+- [x] Disable the standalone `/poc/comfyui` route and remove its public navigation entry points without changing Dashboard behavior.

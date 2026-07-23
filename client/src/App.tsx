@@ -13,7 +13,6 @@ import AdminLogin from "./pages/AdminLogin";
 import AdminPanel from "./pages/AdminPanel";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
-import { POCComfyUI } from "./pages/POCComfyUI";
 
 function Router() {
   // make sure to consider if you need authentication for certain routes
@@ -26,7 +25,6 @@ function Router() {
       <Route path={"/gallery"} component={Gallery} />
       <Route path={"/admin/login"} component={AdminLogin} />
       <Route path={"/admin"} component={AdminPanel} />
-      <Route path={"/poc/comfyui"} component={POCComfyUI} />
       <Route path={"/404"} component={NotFound} />
       {/* Final fallback route */}
       <Route component={NotFound} />
