@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   checkComfyUiConnection: vi.fn(),
   downloadApprovedQwenOutput: vi.fn(),
   getApprovedQwenOutput: vi.fn(),
+  getApprovedQwenTaskProgress: vi.fn(),
   submitApprovedQwenEdit: vi.fn(),
   storagePut: vi.fn(),
 }));
@@ -35,6 +36,7 @@ vi.mock("./comfyui", () => ({
   checkComfyUiConnection: mocks.checkComfyUiConnection,
   downloadApprovedQwenOutput: mocks.downloadApprovedQwenOutput,
   getApprovedQwenOutput: mocks.getApprovedQwenOutput,
+  getApprovedQwenTaskProgress: mocks.getApprovedQwenTaskProgress,
   submitApprovedQwenEdit: mocks.submitApprovedQwenEdit,
 }));
 
@@ -61,6 +63,7 @@ describe("durable direct ComfyUI XXX tasks", () => {
     mocks.updateTryOnTaskStages.mockResolvedValue(true);
     mocks.checkComfyUiConnection.mockResolvedValue(undefined);
     mocks.submitApprovedQwenEdit.mockResolvedValue({ promptId: "direct-prompt-1", uploadedFilename: "shirt-changer-source.jpg" });
+    mocks.getApprovedQwenTaskProgress.mockResolvedValue({ phase: "unavailable", queueRemaining: null, estimatedSecondsRemaining: null });
   });
 
   it("uses direct ComfyUI, reserves exactly ten credits, and forwards the exact Dashboard prompt", async () => {
@@ -98,6 +101,25 @@ describe("durable direct ComfyUI XXX tasks", () => {
     expect(mocks.storagePut).toHaveBeenCalledWith("comfyui-results/17/801.png", Buffer.from("generated"), "image/png");
     expect(mocks.updateTryOnHistory).toHaveBeenCalledWith(801, expect.objectContaining({ status: "success", creditsDeducted: 10 }));
     expect(mocks.addCredits).not.toHaveBeenCalled();
+  });
+
+  it("returns persisted direct-ComfyUI execution stages and only exposes an ETA when ComfyUI provides one", async () => {
+    mocks.getUserTryOnTask.mockResolvedValue({ shirtStyle: "qwen-image-edit-rapid", status: "pending", bubbleApiResponse: "{}" });
+    mocks.getComfyUiTaskMetadata.mockReturnValue(taskMetadata);
+    mocks.getApprovedQwenOutput.mockResolvedValue(null);
+    mocks.getApprovedQwenTaskProgress.mockResolvedValue({ phase: "executing", queueRemaining: 0, estimatedSecondsRemaining: null });
+
+    await expect(refreshApprovedQwenTask(17, 801)).resolves.toMatchObject({
+      status: "pending",
+      queueRemaining: 0,
+      estimatedSecondsRemaining: null,
+      stages: [expect.objectContaining({ key: "qwen_executing", state: "active" })],
+    });
+    expect(mocks.updateTryOnTaskStages).toHaveBeenCalledWith(
+      801,
+      expect.arrayContaining([expect.objectContaining({ key: "qwen_executing", label: "Qwen is executing the image edit" })]),
+      taskMetadata,
+    );
   });
 
   it("returns the full direct-ComfyUI connection failure and refunds exactly ten credits", async () => {

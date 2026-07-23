@@ -18,6 +18,7 @@ import {
   ComfyUiRemoteError,
   downloadApprovedQwenOutput,
   getApprovedQwenOutput,
+  getApprovedQwenTaskProgress,
   submitApprovedQwenEdit,
 } from "./comfyui";
 import { QWEN_EDIT_CREDIT_COST, QWEN_EDIT_STYLE_ID, QWEN_EDIT_STYLE_NAME } from "./comfyuiQwenWorkflow";
@@ -47,6 +48,16 @@ function getTaskStages(serialized: string | null): TryOnTaskStage[] {
 function advanceStage(stages: TryOnTaskStage[], key: string, label: string, detail?: string): TryOnTaskStage[] {
   const next = stages.map(stage => stage.state === "active" ? { ...stage, state: "completed" as const } : stage);
   return [...next, { key, label, state: "active", detail, timestamp: Date.now() }];
+}
+
+function setActiveStage(stages: TryOnTaskStage[], key: string, label: string, detail?: string): TryOnTaskStage[] {
+  const existingActive = stages.find(stage => stage.state === "active");
+  if (existingActive?.key === key) {
+    return stages.map(stage => stage.key === key && stage.state === "active"
+      ? { ...stage, label, detail, timestamp: Date.now() }
+      : stage);
+  }
+  return advanceStage(stages, key, label, detail);
 }
 
 function completeStage(stages: TryOnTaskStage[], key: string, label: string): TryOnTaskStage[] {
@@ -115,7 +126,7 @@ export async function startApprovedQwenTask(userId: number, photoId: number, pos
   }
 
   try {
-    stages = advanceStage(stages, "workstation_check", "Checking Qwen workstation connection");
+    stages = advanceStage(stages, "comfyui_connection", "Checking direct ComfyUI connection");
     await updateTryOnTaskStages(historyId, stages);
     await checkComfyUiConnection();
 
@@ -129,7 +140,7 @@ export async function startApprovedQwenTask(userId: number, photoId: number, pos
       queuedAt: Date.now(),
       positivePrompt: prompt,
     };
-    stages = advanceStage(stages, "qwen_queued", "Qwen image edit is in progress", "Your result will appear automatically when it is ready.");
+    stages = advanceStage(stages, "qwen_queued", "Qwen edit queued in ComfyUI", "The server will keep checking ComfyUI and save the result in Gallery.");
     await updateTryOnTaskStages(historyId, stages, metadata);
 
     return { taskId: historyId, status: "pending" as const, creditsRemaining: balance - QWEN_EDIT_CREDIT_COST, shirtApplied: QWEN_EDIT_STYLE_NAME };
@@ -167,9 +178,26 @@ export async function refreshApprovedQwenTask(userId: number, historyId: number)
   try {
     const output = await getApprovedQwenOutput(metadata.promptId);
     if (!output) {
-      const stages = advanceStage(existingStages, "qwen_waiting", "Waiting for Qwen to finish");
+      const progress = await getApprovedQwenTaskProgress(metadata.promptId);
+      const stages = progress.phase === "executing"
+        ? setActiveStage(existingStages, "qwen_executing", "Qwen is executing the image edit", "ComfyUI reports that this task is currently running.")
+        : progress.phase === "queued"
+          ? setActiveStage(
+            existingStages,
+            "qwen_queued",
+            "Qwen edit is queued in ComfyUI",
+            progress.queueRemaining && progress.queueRemaining > 0
+              ? `${progress.queueRemaining} task${progress.queueRemaining === 1 ? "" : "s"} ahead in the ComfyUI queue.`
+              : "The task is next in the ComfyUI queue.",
+          )
+          : setActiveStage(existingStages, "qwen_waiting", "Waiting for Qwen to finish", "ComfyUI queue status is temporarily unavailable; result polling continues.");
       await updateTryOnTaskStages(historyId, stages, metadata);
-      return { status: "pending" as const };
+      return {
+        status: "pending" as const,
+        stages,
+        queueRemaining: progress.queueRemaining,
+        estimatedSecondsRemaining: progress.estimatedSecondsRemaining,
+      };
     }
 
     const stages = advanceStage(existingStages, "result_saving", "Saving generated result");

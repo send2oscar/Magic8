@@ -326,6 +326,9 @@ export default function Dashboard() {
   const qwenEstimatedSecondsRemaining = qwenTaskStatus && "estimatedSecondsRemaining" in qwenTaskStatus
     ? qwenTaskStatus.estimatedSecondsRemaining
     : undefined;
+  const qwenQueueRemaining = qwenTaskStatus && "queueRemaining" in qwenTaskStatus
+    ? qwenTaskStatus.queueRemaining
+    : undefined;
   const liveTaskStages: LiveTaskStage[] = isBackgroundQwenTask && qwenTaskStages?.length ? qwenTaskStages : localTaskStages;
   const liveProgress = tryOnProgress;
   const liveProgressLabel = isBackgroundQwenTask
@@ -499,7 +502,14 @@ export default function Dashboard() {
                       {isBackgroundQwenTask ? (
                         <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
                           <span>Background task #{activeQwenTaskId}</span>
-                          <span>Estimated remaining: {typeof qwenEstimatedSecondsRemaining === "number" ? formatEstimatedTime(qwenEstimatedSecondsRemaining) : "awaiting ComfyUI estimate"}</span>
+                          {typeof qwenQueueRemaining === "number" && (
+                            <span>Queue ahead: {qwenQueueRemaining}</span>
+                          )}
+                          <span>
+                            Estimated remaining: {typeof qwenEstimatedSecondsRemaining === "number"
+                              ? formatEstimatedTime(qwenEstimatedSecondsRemaining)
+                              : "not available from ComfyUI"}
+                          </span>
                         </div>
                       ) : (
                         <p className="text-xs text-muted-foreground">{elapsedSeconds}s elapsed</p>

@@ -117,6 +117,11 @@ function safeOutputPart(value: unknown, fieldName: string, allowSlash = false): 
 
 export type ComfyUiPrompt = { promptId: string; uploadedFilename: string };
 export type ComfyUiOutput = { filename: string; subfolder: string; type: string };
+export type ComfyUiTaskProgress = {
+  phase: "queued" | "executing" | "unavailable";
+  queueRemaining: number | null;
+  estimatedSecondsRemaining: null;
+};
 
 /** Validates token-bearing connectivity without exposing browser clients to ComfyUI. */
 export async function checkComfyUiConnection(): Promise<void> {
@@ -164,6 +169,44 @@ export async function submitApprovedQwenEdit(photoKey: string, positivePrompt = 
   }));
   const promptId = safeOutputPart(promptResponse.prompt_id, "prompt identifier");
   return { promptId, uploadedFilename };
+}
+
+function queuePromptId(entry: unknown): string | null {
+  if (Array.isArray(entry) && typeof entry[1] === "string") return entry[1];
+  if (entry && typeof entry === "object") {
+    const record = entry as Record<string, unknown>;
+    if (typeof record.prompt_id === "string") return record.prompt_id;
+    if (typeof record.promptId === "string") return record.promptId;
+  }
+  return null;
+}
+
+function queueEntries(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
+/**
+ * Reads ComfyUI's own queue view for the submitted prompt. ComfyUI's HTTP
+ * queue response does not provide a reliable duration, so ETA remains null
+ * rather than presenting an invented estimate.
+ */
+export async function getApprovedQwenTaskProgress(promptId: string): Promise<ComfyUiTaskProgress> {
+  try {
+    const queue = await readJson(await comfyFetch("/queue"));
+    const running = queueEntries(queue.queue_running);
+    const pending = queueEntries(queue.queue_pending);
+    if (running.some(entry => queuePromptId(entry) === promptId)) {
+      return { phase: "executing", queueRemaining: 0, estimatedSecondsRemaining: null };
+    }
+    const pendingIndex = pending.findIndex(entry => queuePromptId(entry) === promptId);
+    if (pendingIndex >= 0) {
+      return { phase: "queued", queueRemaining: pendingIndex, estimatedSecondsRemaining: null };
+    }
+  } catch {
+    // The durable task remains pollable through /history even if the optional
+    // queue endpoint is temporarily unavailable.
+  }
+  return { phase: "unavailable", queueRemaining: null, estimatedSecondsRemaining: null };
 }
 
 /** Returns null while the task is still queued or running. */

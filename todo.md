@@ -196,8 +196,8 @@
 - [x] Restore `isSafeRemotePrompt` keyword restrictions after the temporary always-true configuration was removed.
 - [x] Add focused regression coverage for a slow first remote response that exceeds the previous four-second limit.
 - [ ] Publish the repaired prompt loader and verify a fresh visit to the published `/poc/comfyui` page populates the field from `defaultPrompt.txt`.
-- [ ] Add server-mediated live ComfyUI queue/execution progress and a clearly labelled estimated remaining time to the POC Processing Log.
-- [ ] Stream truthful in-request ComfyUI POC stages to the Processing Log through a short-lived authenticated status query.
+- [x] Add server-mediated live ComfyUI queue/execution progress and a clearly labelled estimated remaining time to the POC Processing Log.
+- [x] Stream truthful in-request ComfyUI POC stages to the Processing Log through a short-lived authenticated status query.
 - [x] Diagnose the current ComfyUI `/prompt` HTTP 400 response using the instance's returned validation details.
 - [x] Complete a verified corrected POC request contract that uploads to the remote ComfyUI endpoint and injects its returned filename into workflow node `78`.
 - [x] Verify that the POC processing-log panel renders safe server-side upload, validation, polling, and output-retrieval diagnostics on a real request.
@@ -270,3 +270,6 @@
 - [x] Preserve 10-credit XXX accounting, Gallery delivery, and comprehensive ComfyUI status/error reporting after the direct-access migration.
 - [x] Update the Dashboard and operating documentation to remove Bridge setup requirements for XXX processing.
 - [x] Add and run regression coverage for the direct ComfyUI XXX path.
+- [x] Diagnose the reported failing direct-ComfyUI XXX background job using current task records, runtime logs, and endpoint responses.
+- [x] Repair the direct-ComfyUI XXX background job so it persists a usable remote task identifier, polls terminal status correctly, and saves successful output to Gallery.
+- [x] Add a regression case for the specific reproduced background-job failure and validate the repaired production-like path.
