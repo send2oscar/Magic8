@@ -177,7 +177,7 @@
 - [x] Verify that the POC processing-log panel renders safe server-side upload, validation, polling, and output-retrieval diagnostics on a real request.
 - [x] Add browser-equivalent regression coverage proving the POC page renders returned ComfyUI diagnostics and the result image after a successful request.
 - [x] Add automated coverage for a rejected ComfyUI prompt payload and a successful upload-to-output POC sequence.
-- [ ] Validate that the configured ComfyUI endpoint is publicly reachable over HTTPS and does not expose an unauthenticated management surface.
+- [ ] Remediate the confirmed direct-ComfyUI exposure: the endpoint currently serves unauthenticated HTTP and does not provide HTTPS on port 8188; use an authenticated HTTPS boundary or the planned workstation bridge before launch.
 - [ ] Add a server-side ComfyUI client that uploads the selected private photo to ComfyUI, submits a controlled API-format workflow copy, and safely retrieves the named output image.
 - [ ] Persist ComfyUI prompt identifiers and terminal task status so processing can recover from a web request ending before the workstation finishes.
 - [ ] Connect the `XXX` selection to the ComfyUI workflow while preserving the existing Try On flow for other shirt styles.

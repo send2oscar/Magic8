@@ -31,3 +31,9 @@ On 2026-07-23, a normal 256×256 PNG completed successfully against the configur
 ## POC boundaries
 
 This is an intentionally temporary direct-HTTP POC. It does **not** establish the production security model: the configured ComfyUI endpoint remains a publicly reachable HTTP service without a verified access-control boundary. Before launch, use HTTPS and an authenticated/restricted path, or replace direct access with the planned workstation-initiated bridge.
+
+## Endpoint boundary check — 2026-07-23
+
+The direct POC endpoint is reachable over plain HTTP. Unauthenticated requests to the root path, `/system_stats`, and `/object_info/LoadImage` each returned HTTP 200 from the public Internet. HTTPS on the same host and port did not negotiate TLS (`wrong version number`), which confirms that the current port serves HTTP rather than HTTPS.
+
+> This configuration is suitable only for the temporary POC. It must not be used for a launch or for users’ private images without placing ComfyUI behind an authenticated HTTPS boundary or moving to the planned workstation-initiated bridge.
