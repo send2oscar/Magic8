@@ -12,3 +12,7 @@ Recent entries returned by `GET /history?max_items=30` showed two execution fail
 > `'NoneType' object is not subscriptable`
 
 The `Image Saver Simple` object schema declares its `metadata` input as optional with a default of `null`. The approved server-owned workflow therefore removes the optional `WidgetToString` and `Image Saver Metadata` chain, plus the dependent metadata binding, while retaining the fixed Qwen edit path and output image saving.
+
+## Post-repair verification
+
+After the workflow repair, a live direct-ComfyUI task ran with no `104` or `106` workflow nodes. The host recorded the task as `success` and returned one saved image from output node `102`, confirming that the previous `WidgetToString` execution error no longer blocks the fixed Qwen workflow.
