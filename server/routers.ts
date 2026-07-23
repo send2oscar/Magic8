@@ -18,12 +18,35 @@ import {
   updateTryOnHistory,
   updateTryOnTaskStages,
   getActiveTryOnTask,
+  getUserTryOnTask,
   type TryOnTaskStage,
 } from "./db";
 import { storagePut } from "./storage";
 import { generateImage, ImageGenerationRequestError } from "./_core/imageGeneration";
 import { clearAdminSession, createAdminSession, hasAdminSession, isAdminLoginConfigured, verifyAdminCredentials } from "./adminAuth";
 import { createTryOnSourceUrl } from "./tryOnSource";
+import { ENV } from "./_core/env";
+import {
+  claimNextBridgeTask,
+  completeBridgeTaskLease,
+  consumeBridgePairing,
+  createBridgePairing,
+  failBridgeTaskLease,
+  getBridgeDeviceFromCredential,
+  getBridgeTaskById,
+  getLatestActiveBridgeDevice,
+  touchBridgeDevice,
+  updateBridgeTaskProgress,
+  validateBridgeTaskLease,
+} from "./bridgeDb";
+import {
+  buildCompletedBridgeStages,
+  failLocalBridgeTaskForUser,
+  parseLocalBridgeStages,
+  refreshLocalBridgeQwenTask,
+  startLocalBridgeQwenTask,
+} from "./localBridgeQwenTask";
+import { runComfyUIPOC, cleanupTempFiles } from "./comfyuiPoc";
 
 // Shirt styles available for try-on
 const SHIRT_STYLES = [
@@ -72,7 +95,163 @@ function getInsertedHistoryId(result: unknown): number | null {
   return null;
 }
 
+function requireProjectOwner(user: { openId: string }) {
+  if (!ENV.ownerOpenId || user.openId !== ENV.ownerOpenId) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Only the project owner can pair a local ComfyUI workstation." });
+  }
+}
+
+const bridgeCredentialSchema = z.string().min(32).max(256);
+const bridgeLeaseSchema = z.string().min(32).max(256);
+const bridgeOutputMimeSchema = z.enum(["image/jpeg", "image/png", "image/webp"]);
+
 export const appRouter = router({
+  comfyui: router({
+    startQwenEdit: protectedProcedure
+      .input(z.object({ photoId: z.number().int().positive() }))
+      .mutation(({ ctx, input }) => startLocalBridgeQwenTask(ctx.user.id, input.photoId)),
+    qwenEditStatus: protectedProcedure
+      .input(z.object({ taskId: z.number().int().positive() }))
+      .query(({ ctx, input }) => refreshLocalBridgeQwenTask(ctx.user.id, input.taskId)),
+  }),
+  bridge: router({
+    /** Owner-only status used to guide pairing in the Dashboard. */
+    ownerStatus: protectedProcedure.query(async ({ ctx }) => {
+      requireProjectOwner(ctx.user);
+      return getLatestActiveBridgeDevice(ctx.user.id);
+    }),
+    createPairing: protectedProcedure.mutation(async ({ ctx }) => {
+      requireProjectOwner(ctx.user);
+      return createBridgePairing(ctx.user.id);
+    }),
+    pair: publicProcedure
+      .input(z.object({ code: z.string().min(20).max(128), label: z.string().min(1).max(120) }))
+      .mutation(async ({ input }) => {
+        const paired = await consumeBridgePairing(input.code, input.label);
+        if (!paired) throw new TRPCError({ code: "FORBIDDEN", message: "This pairing code is invalid, expired, or has already been used." });
+        return paired;
+      }),
+    heartbeat: publicProcedure
+      .input(z.object({ credential: bridgeCredentialSchema }))
+      .mutation(async ({ input }) => {
+        const device = await getBridgeDeviceFromCredential(input.credential);
+        if (!device) throw new TRPCError({ code: "UNAUTHORIZED", message: "The local Bridge credential is invalid or revoked." });
+        await touchBridgeDevice(device.id);
+        return { deviceId: device.id, status: "active" as const };
+      }),
+    claim: publicProcedure
+      .input(z.object({ credential: bridgeCredentialSchema }))
+      .mutation(async ({ ctx, input }) => {
+        const device = await getBridgeDeviceFromCredential(input.credential);
+        if (!device) throw new TRPCError({ code: "UNAUTHORIZED", message: "The local Bridge credential is invalid or revoked." });
+        await touchBridgeDevice(device.id);
+        const task = await claimNextBridgeTask(device.id);
+        if (!task) return { task: null };
+        let sourceImageUrl: string;
+        try {
+          sourceImageUrl = createTryOnSourceUrl(ctx.req, task.photoKey);
+        } catch {
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "A secure source image URL could not be created." });
+        }
+        return {
+          task: {
+            id: task.id,
+            historyId: task.historyId,
+            workflowId: task.workflowId,
+            sourceImageUrl,
+            leaseCredential: task.leaseCredential,
+            leaseExpiresAt: task.leaseExpiresAt,
+          },
+        };
+      }),
+    progress: publicProcedure
+      .input(z.object({
+        credential: bridgeCredentialSchema,
+        taskId: z.number().int().positive(),
+        leaseCredential: bridgeLeaseSchema,
+        status: z.enum(["leased", "processing"]).optional(),
+        progressKey: z.string().min(1).max(100),
+        progressLabel: z.string().min(1).max(255),
+        progressDetail: z.string().max(2_000).optional(),
+        promptId: z.string().max(128).optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const device = await getBridgeDeviceFromCredential(input.credential);
+        if (!device) throw new TRPCError({ code: "UNAUTHORIZED", message: "The local Bridge credential is invalid or revoked." });
+        await touchBridgeDevice(device.id);
+        const updated = await updateBridgeTaskProgress({
+          taskId: input.taskId,
+          deviceId: device.id,
+          leaseCredential: input.leaseCredential,
+          status: input.status,
+          progressKey: input.progressKey,
+          progressLabel: input.progressLabel,
+          progressDetail: input.progressDetail,
+          promptId: input.promptId,
+        });
+        if (!updated) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "The Bridge task lease is no longer valid." });
+        return { success: true };
+      }),
+    complete: publicProcedure
+      .input(z.object({
+        credential: bridgeCredentialSchema,
+        taskId: z.number().int().positive(),
+        leaseCredential: bridgeLeaseSchema,
+        outputBase64: z.string().min(4).max(35 * 1024 * 1024),
+        mimeType: bridgeOutputMimeSchema,
+      }))
+      .mutation(async ({ input }) => {
+        const device = await getBridgeDeviceFromCredential(input.credential);
+        if (!device) throw new TRPCError({ code: "UNAUTHORIZED", message: "The local Bridge credential is invalid or revoked." });
+        await touchBridgeDevice(device.id);
+
+        const task = await validateBridgeTaskLease(input.taskId, device.id, input.leaseCredential);
+        if (!task) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "The Bridge task lease is no longer valid." });
+        const imageBytes = Buffer.from(input.outputBase64, "base64");
+        if (!imageBytes.length || imageBytes.length > 25 * 1024 * 1024) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "The Bridge output image is missing or exceeds the 25 MB limit." });
+        }
+
+        const extension = input.mimeType === "image/png" ? "png" : input.mimeType === "image/webp" ? "webp" : "jpg";
+        const result = await storagePut(`try-on-results/${task.userId}/qwen-bridge-${task.historyId}.${extension}`, imageBytes, input.mimeType);
+        const history = await getUserTryOnTask(task.userId, task.historyId);
+        if (!history || history.status !== "pending") {
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "The associated XXX task cannot receive a result." });
+        }
+        const completed = await completeBridgeTaskLease(input.taskId, device.id, input.leaseCredential);
+        if (!completed) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "The Bridge task lease is no longer valid." });
+        await updateTryOnHistory(task.historyId, {
+          status: "success",
+          resultImageUrl: result.url,
+          resultImageKey: result.key,
+          creditsDeducted: 1,
+        });
+        await updateTryOnTaskStages(task.historyId, buildCompletedBridgeStages(parseLocalBridgeStages(history.bubbleApiResponse)));
+        return { success: true };
+      }),
+    fail: publicProcedure
+      .input(z.object({
+        credential: bridgeCredentialSchema,
+        taskId: z.number().int().positive(),
+        leaseCredential: bridgeLeaseSchema,
+        message: z.string().min(1).max(500),
+      }))
+      .mutation(async ({ input }) => {
+        const device = await getBridgeDeviceFromCredential(input.credential);
+        if (!device) throw new TRPCError({ code: "UNAUTHORIZED", message: "The local Bridge credential is invalid or revoked." });
+        await touchBridgeDevice(device.id);
+        const accepted = await failBridgeTaskLease({
+          taskId: input.taskId,
+          deviceId: device.id,
+          leaseCredential: input.leaseCredential,
+          message: input.message,
+        });
+        if (!accepted) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "The Bridge task lease is no longer valid." });
+        const task = await getBridgeTaskById(input.taskId);
+        if (task) await failLocalBridgeTaskForUser(task.userId, task.historyId, "The local Qwen workstation could not complete this edit. Your credit has been returned.");
+        return { success: true };
+      }),
+  }),
   system: systemRouter,
   auth: router({
     me: publicProcedure.query(opts => opts.ctx.user),
@@ -223,6 +402,53 @@ export const appRouter = router({
     list: publicProcedure.query(() => {
       return SHIRT_STYLES;
     }),
+  }),
+
+  // ComfyUI POC
+  comfyuiPoc: router({
+    processImage: protectedProcedure
+      .input(
+        z.object({
+          imageBase64: z.string(),
+          imageName: z.string(),
+          positivePrompt: z.string().optional(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        try {
+          console.log('[ComfyUI POC] Processing image:', input.imageName);
+          
+          const imageBuffer = Buffer.from(input.imageBase64, 'base64');
+          
+          const result = await runComfyUIPOC(
+            imageBuffer,
+            input.imageName,
+            input.positivePrompt || ''
+          );
+          
+          console.log('[ComfyUI POC] Success:', result);
+          
+          const fs = require('fs');
+          const outputBuffer = fs.readFileSync(result.outputPath);
+          const outputBase64 = outputBuffer.toString('base64');
+          
+          cleanupTempFiles();
+          
+          return {
+            success: true,
+            promptId: result.promptId,
+            outputBase64,
+            message: result.message,
+          };
+        } catch (error) {
+          console.error('[ComfyUI POC] Error:', error);
+          cleanupTempFiles();
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: `ComfyUI processing failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          });
+        }
+      }),
   }),
 
   // Try-on feature

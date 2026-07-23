@@ -59,3 +59,65 @@ export const tryOnHistory = mysqlTable("try_on_history", {
 
 export type TryOnHistory = typeof tryOnHistory.$inferSelect;
 export type InsertTryOnHistory = typeof tryOnHistory.$inferInsert;
+
+/**
+ * A workstation paired by the project owner. Only a one-way hash of the
+ * automatically generated device credential is persisted on the server.
+ */
+export const comfyBridgeDevices = mysqlTable("comfy_bridge_devices", {
+  id: int("id").autoincrement().primaryKey(),
+  ownerUserId: int("ownerUserId").notNull(),
+  label: varchar("label", { length: 120 }).notNull(),
+  credentialHash: varchar("credentialHash", { length: 128 }).notNull().unique(),
+  status: mysqlEnum("status", ["active", "revoked"]).default("active").notNull(),
+  lastSeenAt: timestamp("lastSeenAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  revokedAt: timestamp("revokedAt"),
+});
+
+export type ComfyBridgeDevice = typeof comfyBridgeDevices.$inferSelect;
+export type InsertComfyBridgeDevice = typeof comfyBridgeDevices.$inferInsert;
+
+/**
+ * A short-lived, single-use pairing code. The plaintext code is shown only
+ * to the project owner when generated and is never stored in the database.
+ */
+export const comfyBridgePairings = mysqlTable("comfy_bridge_pairings", {
+  id: int("id").autoincrement().primaryKey(),
+  ownerUserId: int("ownerUserId").notNull(),
+  codeHash: varchar("codeHash", { length: 128 }).notNull().unique(),
+  expiresAt: timestamp("expiresAt").notNull(),
+  consumedAt: timestamp("consumedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type ComfyBridgePairing = typeof comfyBridgePairings.$inferSelect;
+export type InsertComfyBridgePairing = typeof comfyBridgePairings.$inferInsert;
+
+/**
+ * Durable job state for a fixed Qwen edit processed by a paired local Bridge.
+ * Lease fields prevent more than one workstation from completing a task.
+ */
+export const comfyBridgeTasks = mysqlTable("comfy_bridge_tasks", {
+  id: int("id").autoincrement().primaryKey(),
+  historyId: int("historyId").notNull().unique(),
+  userId: int("userId").notNull(),
+  photoId: int("photoId").notNull(),
+  deviceId: int("deviceId").notNull(),
+  workflowId: varchar("workflowId", { length: 100 }).notNull(),
+  status: mysqlEnum("status", ["queued", "leased", "processing", "completed", "failed"]).default("queued").notNull(),
+  leaseHash: varchar("leaseHash", { length: 128 }),
+  leaseExpiresAt: timestamp("leaseExpiresAt"),
+  attemptCount: int("attemptCount").default(0).notNull(),
+  progressKey: varchar("progressKey", { length: 100 }),
+  progressLabel: varchar("progressLabel", { length: 255 }),
+  progressDetail: text("progressDetail"),
+  promptId: varchar("promptId", { length: 128 }),
+  lastError: varchar("lastError", { length: 500 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  completedAt: timestamp("completedAt"),
+});
+
+export type ComfyBridgeTask = typeof comfyBridgeTasks.$inferSelect;
+export type InsertComfyBridgeTask = typeof comfyBridgeTasks.$inferInsert;

@@ -256,19 +256,36 @@ export type TryOnTaskStage = {
   timestamp: number;
 };
 
+export type ComfyUiTaskMetadata = {
+  kind: "qwen-image-edit-rapid";
+  promptId: string;
+  uploadedFilename: string;
+  queuedAt: number;
+};
+
+type PersistedTryOnTaskState = {
+  version: 1;
+  taskStages: TryOnTaskStage[];
+  comfyui?: ComfyUiTaskMetadata;
+};
+
 /**
  * Save non-final, user-safe diagnostic stages without setting completedAt.
  * The same existing history column is used to avoid a schema migration for
  * short-lived task state.
  */
-export async function updateTryOnTaskStages(historyId: number, stages: TryOnTaskStage[]): Promise<boolean> {
+export async function updateTryOnTaskStages(
+  historyId: number,
+  stages: TryOnTaskStage[],
+  comfyui?: ComfyUiTaskMetadata,
+): Promise<boolean> {
   const db = await getDb();
   if (!db) return false;
 
   try {
     await db
       .update(tryOnHistory)
-      .set({ bubbleApiResponse: JSON.stringify({ version: 1, taskStages: stages }) })
+      .set({ bubbleApiResponse: JSON.stringify({ version: 1, taskStages: stages, ...(comfyui ? { comfyui } : {}) }) })
       .where(eq(tryOnHistory.id, historyId));
     return true;
   } catch (error) {
@@ -277,21 +294,38 @@ export async function updateTryOnTaskStages(historyId: number, stages: TryOnTask
   }
 }
 
-function parseTaskStages(serialized: string | null): TryOnTaskStage[] {
-  if (!serialized) return [];
+function parseTaskState(serialized: string | null): PersistedTryOnTaskState | null {
+  if (!serialized) return null;
   try {
-    const parsed = JSON.parse(serialized) as { taskStages?: unknown };
-    if (!Array.isArray(parsed.taskStages)) return [];
-    return parsed.taskStages.filter((stage): stage is TryOnTaskStage => (
+    const parsed = JSON.parse(serialized) as { taskStages?: unknown; comfyui?: unknown };
+    if (!Array.isArray(parsed.taskStages)) return null;
+    const taskStages = parsed.taskStages.filter((stage): stage is TryOnTaskStage => (
       typeof stage === "object" && stage !== null &&
       typeof (stage as TryOnTaskStage).key === "string" &&
       typeof (stage as TryOnTaskStage).label === "string" &&
       ["active", "completed", "error"].includes((stage as TryOnTaskStage).state) &&
       typeof (stage as TryOnTaskStage).timestamp === "number"
     ));
+    const comfyui = parsed.comfyui;
+    const safeComfyUi = (
+      typeof comfyui === "object" && comfyui !== null &&
+      (comfyui as ComfyUiTaskMetadata).kind === "qwen-image-edit-rapid" &&
+      typeof (comfyui as ComfyUiTaskMetadata).promptId === "string" &&
+      typeof (comfyui as ComfyUiTaskMetadata).uploadedFilename === "string" &&
+      typeof (comfyui as ComfyUiTaskMetadata).queuedAt === "number"
+    ) ? comfyui as ComfyUiTaskMetadata : undefined;
+    return { version: 1, taskStages, ...(safeComfyUi ? { comfyui: safeComfyUi } : {}) };
   } catch {
-    return [];
+    return null;
   }
+}
+
+export function getComfyUiTaskMetadata(serialized: string | null): ComfyUiTaskMetadata | null {
+  return parseTaskState(serialized)?.comfyui ?? null;
+}
+
+function parseTaskStages(serialized: string | null): TryOnTaskStage[] {
+  return parseTaskState(serialized)?.taskStages ?? [];
 }
 
 /** Return only the signed-in user's latest unfinished try-on and safe task stages. */
@@ -322,6 +356,33 @@ export async function getActiveTryOnTask(userId: number) {
     };
   } catch (error) {
     console.error("[Database] Failed to get active try-on task:", error);
+    return null;
+  }
+}
+
+/** Load a single try-on task only when it belongs to the authenticated user. */
+export async function getUserTryOnTask(userId: number, historyId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  try {
+    const rows = await db
+      .select({
+        id: tryOnHistory.id,
+        photoId: tryOnHistory.photoId,
+        shirtStyle: tryOnHistory.shirtStyle,
+        status: tryOnHistory.status,
+        creditsDeducted: tryOnHistory.creditsDeducted,
+        resultImageUrl: tryOnHistory.resultImageUrl,
+        resultImageKey: tryOnHistory.resultImageKey,
+        bubbleApiResponse: tryOnHistory.bubbleApiResponse,
+        createdAt: tryOnHistory.createdAt,
+      })
+      .from(tryOnHistory)
+      .where(and(eq(tryOnHistory.userId, userId), eq(tryOnHistory.id, historyId)))
+      .limit(1);
+    return rows[0] ?? null;
+  } catch (error) {
+    console.error("[Database] Failed to get user try-on task:", error);
     return null;
   }
 }

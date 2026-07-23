@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { useAuth } from "@/_core/hooks/useAuth";
 
 const DEMO_PHOTO_URL = '/manus-storage/demo_person_31d5a68a.jpg';
+const QWEN_EDIT_STYLE_ID = "qwen-image-edit-rapid";
 
 type SelectedPhoto = {
   id: number | null;
@@ -41,17 +42,27 @@ export default function Dashboard() {
   const [localTaskStages, setLocalTaskStages] = useState<LiveTaskStage[]>([]);
   const [tryOnStartedAt, setTryOnStartedAt] = useState<number | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [activeQwenTaskId, setActiveQwenTaskId] = useState<number | null>(null);
 
   // tRPC queries and mutations
   const creditsQuery = trpc.credits.getBalance.useQuery();
   const photosQuery = trpc.photos.list.useQuery();
   const shirtsQuery = trpc.shirts.list.useQuery();
   const tryOnMutation = trpc.tryOn.process.useMutation();
+  const startQwenEditMutation = trpc.comfyui.startQwenEdit.useMutation();
   const activeTaskQuery = trpc.tryOn.activeTask.useQuery(undefined, {
-    enabled: isTryingOn,
-    refetchInterval: isTryingOn ? 1_000 : false,
+    enabled: isAuthenticated,
+    refetchInterval: isTryingOn ? 1_000 : 10_000,
     refetchOnWindowFocus: false,
   });
+  const qwenTaskStatusQuery = trpc.comfyui.qwenEditStatus.useQuery(
+    { taskId: activeQwenTaskId ?? 0 },
+    {
+      enabled: activeQwenTaskId !== null,
+      refetchInterval: activeQwenTaskId !== null ? 2_500 : false,
+      refetchOnWindowFocus: false,
+    },
+  );
 
   useEffect(() => {
     if (!isTryingOn) {
@@ -81,6 +92,37 @@ export default function Dashboard() {
   useEffect(() => () => {
     if (previewObjectUrl.current && typeof URL.revokeObjectURL === "function") URL.revokeObjectURL(previewObjectUrl.current);
   }, []);
+
+  useEffect(() => {
+    const activeTask = activeTaskQuery.data;
+    if (!activeTask || activeTask.shirtStyle !== QWEN_EDIT_STYLE_ID || activeTask.id === activeQwenTaskId) return;
+    setActiveQwenTaskId(activeTask.id);
+    setIsTryingOn(true);
+  }, [activeQwenTaskId, activeTaskQuery.data]);
+
+  useEffect(() => {
+    const task = qwenTaskStatusQuery.data;
+    if (!task || activeQwenTaskId === null) return;
+
+    if (task.status === "success") {
+      setTryOnProgress(100);
+      setResultData({ resultImageUrl: task.resultImageUrl, shirtApplied: task.shirtApplied });
+      setShowResult(true);
+      setActiveQwenTaskId(null);
+      setIsTryingOn(false);
+      setLocalTaskStages([]);
+      creditsQuery.refetch();
+      toast.success("XXX edit completed!");
+    }
+
+    if (task.status === "failed") {
+      setActiveQwenTaskId(null);
+      setIsTryingOn(false);
+      setLocalTaskStages([]);
+      creditsQuery.refetch();
+      toast.error(task.message);
+    }
+  }, [activeQwenTaskId, creditsQuery, qwenTaskStatusQuery.data]);
 
   if (loading) {
     return (
@@ -199,6 +241,8 @@ export default function Dashboard() {
       return;
     }
 
+    const isQwenEdit = selectedShirt === QWEN_EDIT_STYLE_ID;
+    let qwenQueued = false;
     tryOnInFlight.current = true;
     setIsTryingOn(true);
     setLocalTaskStages([
@@ -206,6 +250,19 @@ export default function Dashboard() {
       { key: "waiting_for_server", label: "Waiting for server task", state: "active", timestamp: Date.now() },
     ]);
     try {
+      if (isQwenEdit) {
+        const task = await startQwenEditMutation.mutateAsync({ photoId: selectedPhoto.id });
+        qwenQueued = true;
+        setActiveQwenTaskId(task.taskId);
+        setLocalTaskStages([
+          { key: "request_sent", label: "XXX request sent", state: "completed", timestamp: Date.now() },
+          { key: "qwen_processing", label: "Qwen workstation is processing your image", state: "active", timestamp: Date.now() },
+        ]);
+        creditsQuery.refetch();
+        toast.success("XXX edit started. You can keep this page open while Qwen processes your image.");
+        return;
+      }
+
       const result = await tryOnMutation.mutateAsync({
         photoId: selectedPhoto.id,
         shirtStyle: selectedShirt,
@@ -222,9 +279,11 @@ export default function Dashboard() {
       toast.error(error?.message || "Failed to process try-on");
       console.error(error);
     } finally {
-      setIsTryingOn(false);
+      if (!qwenQueued) {
+        setIsTryingOn(false);
+        setLocalTaskStages([]);
+      }
       tryOnInFlight.current = false;
-      setLocalTaskStages([]);
     }
   };
 
@@ -341,12 +400,17 @@ export default function Dashboard() {
                     </button>
                   ))}
                   <button
-                    key="coming-soon"
-                    disabled
-                    className="p-4 rounded border-2 transition text-center border-gray-700 text-gray-500 cursor-not-allowed"
+                    key={QWEN_EDIT_STYLE_ID}
+                    onClick={() => setSelectedShirt(QWEN_EDIT_STYLE_ID)}
+                    className={`p-4 rounded border-2 transition text-center ${
+                      selectedShirt === QWEN_EDIT_STYLE_ID
+                        ? "border-secondary bg-secondary/20"
+                        : "border-accent/50 hover:border-accent"
+                    }`}
                   >
                     <Shirt className="w-6 h-6 mx-auto mb-2" />
-                    <p className="text-sm font-bold">XXX (Coming Soon)</p>
+                    <p className="text-sm font-bold">XXX</p>
+                    <p className="mt-1 text-xs text-muted-foreground">Qwen edit</p>
                   </button>
                 </div>
               </div>

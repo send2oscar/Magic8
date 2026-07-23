@@ -9,7 +9,9 @@ const mocks = vi.hoisted(() => ({
   refetchCredits: vi.fn(),
   refetchPhotos: vi.fn(),
   refetchActiveTask: vi.fn(),
+  startQwenEdit: vi.fn(),
   activeTaskData: null as unknown,
+  qwenTaskData: null as unknown,
   toastError: vi.fn(),
   toastSuccess: vi.fn(),
 }));
@@ -33,6 +35,10 @@ vi.mock("@/lib/trpc", () => ({
     tryOn: {
       process: { useMutation: () => ({ mutateAsync: mocks.mutateAsync }) },
       activeTask: { useQuery: () => ({ data: mocks.activeTaskData, refetch: mocks.refetchActiveTask }) },
+    },
+    comfyui: {
+      startQwenEdit: { useMutation: () => ({ mutateAsync: mocks.startQwenEdit }) },
+      qwenEditStatus: { useQuery: () => ({ data: mocks.qwenTaskData }) },
     },
   },
 }));
@@ -81,7 +87,9 @@ describe("Dashboard Try On Now lifecycle", () => {
     mocks.refetchCredits.mockReset();
     mocks.refetchPhotos.mockReset();
     mocks.refetchActiveTask.mockReset();
+    mocks.startQwenEdit.mockReset();
     mocks.activeTaskData = null;
+    mocks.qwenTaskData = null;
     mocks.toastError.mockReset();
     mocks.toastSuccess.mockReset();
     mocks.refetchPhotos.mockResolvedValue({ data: [{ id: 7, photoKey: "photos/1/test.jpg", photoUrl: "https://storage.example.test/photos/1/test.jpg" }] });
@@ -149,5 +157,18 @@ describe("Dashboard Try On Now lifecycle", () => {
     expect(retryButton.textContent).toContain("TRY ON NOW");
     expect(retryButton.hasAttribute("disabled")).toBe(false);
     expect(mocks.toastSuccess).toHaveBeenCalledWith("Try-on completed!");
+  });
+
+  it("starts the fixed Qwen workflow when XXX is selected without calling the regular try-on mutation", async () => {
+    mocks.startQwenEdit.mockResolvedValue({ taskId: 88, status: "pending", creditsRemaining: 4, shirtApplied: "XXX" });
+    render(<Dashboard />);
+    await selectOwnedPhotoAndShirt();
+
+    fireEvent.click(screen.getByText("XXX"));
+    fireEvent.click(screen.getByRole("button", { name: "Try on now" }));
+
+    await waitFor(() => expect(mocks.startQwenEdit).toHaveBeenCalledWith({ photoId: 7 }));
+    expect(mocks.mutateAsync).not.toHaveBeenCalled();
+    expect(screen.getByText("Qwen workstation is processing your image")).toBeTruthy();
   });
 });

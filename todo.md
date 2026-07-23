@@ -170,3 +170,26 @@
 - [x] Run type checking, automated tests, and desktop/mobile visual verification for the release candidate.
 - [x] Save a release-ready checkpoint for publication.
 - [x] Restore the Dashboard live task-log rendering required by existing Try On lifecycle tests before release.
+
+## ComfyUI Desktop Workflow Integration
+- [ ] Validate that the configured ComfyUI endpoint is publicly reachable over HTTPS and does not expose an unauthenticated management surface.
+- [ ] Add a server-side ComfyUI client that uploads the selected private photo to ComfyUI, submits a controlled API-format workflow copy, and safely retrieves the named output image.
+- [ ] Persist ComfyUI prompt identifiers and terminal task status so processing can recover from a web request ending before the workstation finishes.
+- [ ] Connect the `XXX` selection to the ComfyUI workflow while preserving the existing Try On flow for other shirt styles.
+- [ ] Add focused automated coverage for ComfyUI input replacement, API submission, output retrieval, timeouts, and safe error handling.
+- [ ] Perform a real end-to-end run against the configured workstation and document the required desktop-side network, authentication, and workflow settings.
+- [ ] Fix `XXX` to the supplied `QwenImageEditRapidv1.0` API workflow only; do not infer or accept a workflow selection from uploaded images or untrusted client input.
+- [ ] Replace the Qwen workflow's LoadImage node `78` exclusively with a ComfyUI-managed uploaded filename and collect output from node `102`.
+- [ ] Review `QwenImageEditRapidv1.0(External)` for safe apparel-editing prompts, model settings, and a deterministic image input/output contract before it can replace the blocked workflow.
+- [ ] Re-audit the newly re-uploaded `QwenImageEditRapidv1.0(External)` contents before any connection is enabled, including its checkpoint, LoRA configuration, positive prompt, and image-output node.
+- [ ] Verify the latest re-uploaded workflow uses a non-adult checkpoint and an explicit clothing-preserving Qwen edit prompt before enabling `XXX`.
+
+## Local ComfyUI Bridge Integration (Option B)
+- [ ] Replace the direct public-ComfyUI endpoint path with a workstation-initiated bridge; do not require DDNS, port forwarding, CORS, or a ComfyUI-side Bearer Token.
+- [ ] Add one-time website-to-workstation pairing codes and revocable per-device credentials without exposing them in the browser after pairing.
+- [ ] Add durable queue, lease, retry, completion, and failure states for Qwen `XXX` tasks so an offline workstation never loses a user request.
+- [ ] Add authenticated Bridge procedures to claim only the paired device's queued task, obtain a short-lived source-image URL, report progress, and submit an output image.
+- [ ] Create a locally executable Bridge that talks only to `127.0.0.1:8188`, injects the website photo into the fixed safe Qwen workflow, and returns only the resulting image.
+- [ ] Update Dashboard to show Bridge pairing/availability and to queue `XXX` only when the paired Bridge is online, preserving all existing non-XXX try-on styles.
+- [ ] Add migration, unit, integration, and UI coverage for pairing, device isolation, leases, retries, offline handling, output persistence, and credit refund behaviour.
+- [ ] Produce Windows installation, first-pairing, start/stop, and troubleshooting instructions, then complete a real local end-to-end test on the ComfyUI workstation.
