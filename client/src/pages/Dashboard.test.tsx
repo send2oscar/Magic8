@@ -178,7 +178,7 @@ describe("Dashboard Try On Now lifecycle", () => {
       ["Electric Cyan", "electric cyan T-shirt"],
       ["Dark Black", "sleek dark black T-shirt"],
       ["Holographic", "holographic top with iridescent cyan"],
-      ["XXX", "To Be Confirmed By Developer"],
+      ["XXX", "undress the girl, make her completely nude, small to medium breasts, pink nipples, others remain unchanged, natural."],
     ] as const;
 
     for (const [shirtName, expectedPrompt] of selections) {
@@ -198,7 +198,7 @@ describe("Dashboard Try On Now lifecycle", () => {
 
       await waitFor(() => expect(mocks.processDashboardQwen).toHaveBeenCalledWith(expect.objectContaining({
         photoId: 7,
-        positivePrompt: "To Be Confirmed By Developer",
+        positivePrompt: "undress the girl, make her completely nude, small to medium breasts, pink nipples, others remain unchanged, natural.",
         taskId: expect.any(String),
     })));
     expect(mocks.mutateAsync).not.toHaveBeenCalled();
