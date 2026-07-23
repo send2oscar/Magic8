@@ -18,7 +18,9 @@ function unavailable(): ComfyUiPocDefaultPrompt {
 }
 
 function isSafeRemotePrompt(prompt: string): boolean {
-  return true;
+  const containsExplicitSexualContent = /\b(nude|nudity|naked|topless|bottomless|undress|unclothed|expos(?:e|ed|ing)|porn(?:ographic)?|sex(?:ual)?|erotic|fetish|genitals?|breasts?|nipples?)\b/i.test(prompt);
+  const containsClothingRemoval = /\b(?:remove|take off|delete|erase|eliminate|strip)\b.{0,80}\b(shirt|t-shirt|tee|top|blouse|jacket|hoodie|sweater|clothing|clothes|cloths|garment|outfit|dress|pants|skirt|jeans|uniform|coat)\b/i.test(prompt);
+  return !containsExplicitSexualContent && !containsClothingRemoval;
 }
 
 async function readTextWithinLimit(response: Response): Promise<string | null> {
