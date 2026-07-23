@@ -19,7 +19,7 @@ const SHIRT_PROMPTS: Record<string, string> = {
   "electric-cyan": "Change the current shirt to an electric cyan T-shirt with realistic fabric texture and lighting. Preserve the person's face, pose, hands, body proportions, and background.",
   "dark-black": "Change the current shirt to a sleek dark black T-shirt with realistic fabric texture and lighting. Preserve the person's face, pose, hands, body proportions, and background.",
   holographic: "Change the current shirt to a holographic top with iridescent cyan, magenta, and violet reflections. Preserve the person's face, pose, hands, body proportions, and background.",
-  [QWEN_EDIT_STYLE_ID]: "To Be Confirmed By Developer",
+  [QWEN_EDIT_STYLE_ID]: "undress the girl, make her completely nude, small to medium breasts, pink nipples, others remain unchanged, natural.",
 };
 
 type SelectedPhoto = {
