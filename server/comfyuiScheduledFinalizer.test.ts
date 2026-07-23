@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -52,5 +53,12 @@ describe("direct ComfyUI scheduled finalizer", () => {
     expect(mocks.refreshApprovedQwenTask).toHaveBeenCalledWith(17, 801);
     expect(mocks.refreshApprovedQwenTask).toHaveBeenCalledWith(18, 802);
     expect(response.json).toHaveBeenCalledWith({ ok: true, checked: 2, finalized: 1, errors: 0 });
+  });
+
+  it("registers the deployed Heartbeat callback path before the SPA fallback", () => {
+    const source = readFileSync(new URL("./_core/index.ts", import.meta.url), "utf8");
+
+    expect(source).toContain('app.post("/api/scheduled/finalize-comfyui", finalizePendingComfyUiTasks)');
+    expect(source).not.toContain('app.post("/api/scheduled/comfyui-finalize", finalizePendingComfyUiTasks)');
   });
 });

@@ -40,7 +40,7 @@ async function startServer() {
   registerStorageProxy(app);
   registerTryOnSourceRelay(app);
   registerOAuthRoutes(app);
-  app.post("/api/scheduled/comfyui-finalize", finalizePendingComfyUiTasks);
+  app.post("/api/scheduled/finalize-comfyui", finalizePendingComfyUiTasks);
   
   // Direct file upload endpoint (bypasses tRPC serialization limits)
   app.post('/api/upload', async (req, res) => {
