@@ -202,7 +202,8 @@
 - [ ] Add a server-side ComfyUI client that uploads the selected private photo to ComfyUI, submits a controlled API-format workflow copy, and safely retrieves the named output image.
 - [ ] Persist ComfyUI prompt identifiers and terminal task status so processing can recover from a web request ending before the workstation finishes.
 - [x] Connect the `XXX` selection to the ComfyUI workflow while preserving the existing Try On flow for other shirt styles.
-- [ ] Add focused automated coverage for ComfyUI input replacement, API submission, output retrieval, timeouts, and safe error handling.
+- [x] Add focused automated coverage for ComfyUI input replacement, API submission, output retrieval, timeouts, and safe error handling.
+- [x] Add a mock-only timeout regression proving the POC returns a safe recovery error without contacting the local ComfyUI host.
 - [x] Audit and lock the inline `XXX` integration to the approved Qwen workflow without accepting client-controlled workflow selection.
 - [x] Verify with mocks that only node `78` receives the managed upload filename and node `102` supplies the retrieved output.
 - [x] Perform a real end-to-end run against the configured workstation and document the required desktop-side network, authentication, and workflow settings.

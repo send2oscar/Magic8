@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { buildQwenWorkflow, ComfyUiPocError, runComfyUIPOC } from "./comfyuiPoc";
+import { buildQwenWorkflow, ComfyUiPocError, pollComfyUIResult, runComfyUIPOC } from "./comfyuiPoc";
 import { QWEN_INPUT_NODE_ID, QWEN_OUTPUT_NODE_ID } from "./comfyuiQwenWorkflow";
 
 const encoder = new TextEncoder();
@@ -83,6 +83,19 @@ describe("ComfyUI POC", () => {
       message: "ComfyUI did not return a downloadable output image.",
     } satisfies Partial<ComfyUiPocError>);
     expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("returns a safe timeout error without contacting ComfyUI after the wait window expires", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const diagnostics: Array<{ key: string; label: string }> = [];
+
+    await expect(pollComfyUIResult("prompt-timeout", diagnostics, 0)).rejects.toMatchObject({
+      name: "ComfyUiPocError",
+      message: "ComfyUI processing timed out. Please retry after confirming the workstation is idle.",
+    } satisfies Partial<ComfyUiPocError>);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(diagnostics.at(-1)).toMatchObject({ key: "failed" });
   });
 
   it("emits sampler progress and an estimated remaining time from a ComfyUI progress-state event", async () => {
