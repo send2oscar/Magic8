@@ -1,4 +1,5 @@
-const REMOTE_DEFAULT_PROMPT_URL = "http://www.oscarngan.com/defaultPrompt.txt";
+// Allow the default prompt URL to be overridden via environment variable
+const REMOTE_DEFAULT_PROMPT_URL = process.env.COMFYUI_DEFAULT_PROMPT_URL || "http://www.oscarngan.com/defaultPrompt.txt";
 const MAX_REMOTE_PROMPT_BYTES = 4_096;
 const MAX_REMOTE_PROMPT_CHARS = 2_000;
 // The owner-controlled HTTP source can take several seconds to establish its

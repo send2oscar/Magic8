@@ -15,8 +15,9 @@ import {
   QWEN_OUTPUT_NODE_ID,
   QWEN_PROMPT_NODE_ID,
 } from "./comfyuiQwenWorkflow";
+import { ENV } from "./_core/env";
 
-const COMFYUI_URL = "http://oscarngan.ddns.net:8188";
+const COMFYUI_URL = ENV.comfyuiServerUrl || "http://oscarngan.ddns.net:8188";
 const MAX_INPUT_BYTES = 25 * 1024 * 1024;
 
 export type ComfyUiPocDiagnostic = {
