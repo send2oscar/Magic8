@@ -10,7 +10,7 @@
 
 import { randomUUID } from "node:crypto";
 import {
-  createApprovedQwenWorkflow,
+  APPROVED_QWEN_CHECKPOINT,
   QWEN_INPUT_NODE_ID,
   QWEN_OUTPUT_NODE_ID,
   QWEN_PROMPT_NODE_ID,
@@ -358,7 +358,56 @@ class ComfyUiProgressTracker {
  * Only the approved LoadImage node and positive editing prompt are replaced at runtime.
  */
 export function buildQwenWorkflow(imageFilename: string, positivePrompt = ""): Record<string, any> {
-  return createApprovedQwenWorkflow(imageFilename, positivePrompt);
+
+  const workflow: Record<string, any> = {
+    "8": { inputs: { samples: ["121", 1], vae: ["118", 2] }, class_type: "VAEDecode" },
+    "66": { inputs: { shift: 3, model: ["103", 0] }, class_type: "ModelSamplingAuraFlow" },
+    "75": { inputs: { strength: 1, pre_cfg: false, model: ["66", 0] }, class_type: "CFGNorm" },
+    "77": {
+      inputs: {
+        prompt: "ugly, blurry, distorted, artifacts, bad, wrong, low quality, anime, digital art, semirealistic, cartoon, manga, drawing, fake, unreal",
+        clip: ["103", 1],
+        vae: ["118", 2],
+        image: [QWEN_INPUT_NODE_ID, 0],
+      },
+      class_type: "TextEncodeQwenImageEdit",
+    },
+    [QWEN_INPUT_NODE_ID]: { inputs: { image: imageFilename }, class_type: "LoadImage" },
+    "88": { inputs: { pixels: ["93", 0], vae: ["118", 2] }, class_type: "VAEEncode" },
+    "93": {
+      inputs: { upscale_method: "lanczos", megapixels: 1, resolution_steps: 1, image: [QWEN_INPUT_NODE_ID, 0] },
+      class_type: "ImageScaleToTotalPixels",
+    },
+    // The imported template's Image Saver Simple metadata chain expects a
+    // GUI-only extra_pnginfo.workflow document. SaveImage is API-compatible.
+    [QWEN_OUTPUT_NODE_ID]: { inputs: { filename_prefix: "shirt-changer-poc", images: ["8", 0] }, class_type: "SaveImage" },
+    "103": {
+      inputs: {
+        PowerLoraLoaderHeaderWidget: { type: "PowerLoraLoaderHeaderWidget" },
+        "➕ Add Lora": "",
+        model: ["118", 0],
+        clip: ["118", 1],
+      },
+      class_type: "Power Lora Loader (rgthree)",
+    },
+    "115": { inputs: { value: 8 }, class_type: "INTConstant" },
+    "117": { inputs: { value: 0 }, class_type: "PrimitiveInt" },
+    "118": { inputs: { ckpt_name: APPROVED_QWEN_CHECKPOINT }, class_type: "CheckpointLoaderSimple" },
+    [QWEN_PROMPT_NODE_ID]: {
+      inputs: { prompt: positivePrompt, clip: ["103", 1], vae: ["118", 2], image1: [QWEN_INPUT_NODE_ID, 0] },
+      class_type: "TextEncodeQwenImageEditPlus",
+    },
+    "121": {
+      inputs: {
+        eta: 0.5, sampler_name: "linear/euler", scheduler: "simple", steps: ["115", 0], steps_to_run: -1,
+        denoise: 1, cfg: 1, seed: ["117", 0], sampler_mode: "standard", bongmath: true,
+        model: ["75", 0], positive: [QWEN_PROMPT_NODE_ID, 0], negative: ["77", 0], latent_image: ["88", 0],
+      },
+      class_type: "ClownsharKSampler_Beta",
+    },
+  };
+
+  return workflow;
 }
 
 export async function uploadImageToComfyUI(

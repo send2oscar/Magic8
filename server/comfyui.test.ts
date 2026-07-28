@@ -61,19 +61,13 @@ describe("direct ComfyUI connection", () => {
     expect(() => createApprovedQwenWorkflow("../unsafe.png")).toThrow("invalid uploaded filename");
   });
 
-  it("preserves the supplied image-saver metadata chain and LoRA configuration", () => {
+  it("omits the optional metadata chain that is incompatible with the direct ComfyUI host", () => {
     const workflow = createApprovedQwenWorkflow("shirt-changer-input.png", "Use this exact prompt.");
 
-    expect(workflow[QWEN_OUTPUT_NODE_ID].class_type).toBe("Image Saver Simple");
-    expect(workflow[QWEN_OUTPUT_NODE_ID].inputs.metadata).toEqual(["106", 0]);
-    expect(workflow[QWEN_OUTPUT_NODE_ID].inputs.filename).toBe("%time_%basemodelname_%seed");
-    expect(workflow["104"].class_type).toBe("WidgetToString");
-    expect(workflow["106"].class_type).toBe("Image Saver Metadata");
-    expect(workflow["103"].inputs.lora_1).toEqual({
-      on: true,
-      lora: "external_bb-v1.220.safetensors",
-      strength: 1,
-    });
+    expect(workflow[QWEN_OUTPUT_NODE_ID].inputs.metadata).toBeUndefined();
+    expect(workflow["104"]).toBeUndefined();
+    expect(workflow["106"]).toBeUndefined();
+    expect(workflow[QWEN_OUTPUT_NODE_ID].inputs.filename).toBe("shirt_changer_qwen_%time");
   });
 
   it("recognizes an explicit direct-ComfyUI execution failure", async () => {
@@ -81,30 +75,6 @@ describe("direct ComfyUI connection", () => {
     mocks.request.mockResolvedValue(axiosResponse({ task: { status: { status_str: "error" } } }));
 
     await expect(getApprovedQwenOutput("task")).rejects.toThrow("failed image edit");
-  });
-
-  it("normalizes a safe Windows-style output subfolder returned by the Image Saver node", async () => {
-    ENV.comfyuiServerUrl = "http://oscarngan.ddns.net:8188";
-    mocks.request.mockResolvedValue(axiosResponse({
-      task: {
-        status: { status_str: "success" },
-        outputs: {
-          [QWEN_OUTPUT_NODE_ID]: {
-            images: [{
-              filename: "2026-07-28-212256_Qwen-Rapid-AIO-v11.4_0.jpg",
-              subfolder: "qwen_edit\\2026-07-28",
-              type: "output",
-            }],
-          },
-        },
-      },
-    }));
-
-    await expect(getApprovedQwenOutput("task")).resolves.toEqual({
-      filename: "2026-07-28-212256_Qwen-Rapid-AIO-v11.4_0.jpg",
-      subfolder: "qwen_edit/2026-07-28",
-      type: "output",
-    });
   });
 
   it("reports the prompt's truthful queued position without inventing a duration estimate", async () => {
