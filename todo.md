@@ -107,5 +107,5 @@
 8. Scheduled finalizer checks pending XXX tasks every minute and saves completed outputs to Gallery
 
 ## Remaining Tasks (Paused Until Local ComfyUI Restarts)
-- [ ] After the user restarts local ComfyUI, rerun the live direct `system_stats` health check and complete the external integration regression suite.
-- [ ] Keep all direct local-ComfyUI health and integration tests paused until the user explicitly confirms that the local ComfyUI service has restarted.
+- [x] After the user restarts local ComfyUI, rerun the live direct `system_stats` health check and complete the external integration regression suite.
+- [x] Keep all direct local-ComfyUI health and integration tests paused until the user explicitly confirms that the local ComfyUI service has restarted.
