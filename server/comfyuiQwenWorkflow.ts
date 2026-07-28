@@ -45,7 +45,7 @@ const USER_SUPPLIED_QWEN_WORKFLOW: QwenWorkflow = {
   },
   "77": {
     inputs: {
-      prompt: "ugly, blurry, distorted, artifacts, bad, wrong, low quality, anime, digital art, semirealistic, cartoon, manga, drawing, fake, unreal, large breasts",
+      prompt: "ugly, blurry, distorted, artifacts, bad, wrong, low quality, anime, digital art, semirealistic, cartoon, manga, drawing, fake, unreal",
       clip: ["103", 1],
       vae: ["118", 2],
       image: [QWEN_INPUT_NODE_ID, 0],
