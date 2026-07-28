@@ -71,6 +71,15 @@ vi.mock("@/components/ui/dialog", () => ({
   DialogHeader: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   DialogTitle: ({ children }: { children: React.ReactNode }) => <h2>{children}</h2>,
 }));
+vi.mock("@/components/ui/alert-dialog", () => ({
+  AlertDialog: ({ children, open }: { children: React.ReactNode; open: boolean }) => open ? <div role="alertdialog">{children}</div> : null,
+  AlertDialogContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  AlertDialogHeader: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  AlertDialogTitle: ({ children }: { children: React.ReactNode }) => <h2>{children}</h2>,
+  AlertDialogDescription: ({ children }: { children: React.ReactNode }) => <p>{children}</p>,
+  AlertDialogFooter: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  AlertDialogAction: ({ children, onClick }: React.ButtonHTMLAttributes<HTMLButtonElement>) => <button type="button" onClick={onClick}>{children}</button>,
+}));
 vi.mock("lucide-react", () => ({ Zap: () => null, Upload: () => null, LogOut: () => null, Shirt: () => null, RefreshCw: () => null }));
 
 function deferred<T>() {
@@ -195,7 +204,7 @@ describe("Dashboard Try On Now lifecycle", () => {
     expect(screen.getByRole("button", { name: "Try on now" }).hasAttribute("disabled")).toBe(false);
   });
 
-  it("locks photo selection and offers a new-photo page reset while XXX keeps running in the background", async () => {
+  it("renders only the primary dynamic action while an XXX task is running", async () => {
     mocks.balance = 15;
     mocks.startQwenEdit.mockResolvedValue({ taskId: 991, status: "pending", creditsRemaining: 5, shirtApplied: "XXX" });
     render(<Dashboard />);
@@ -205,11 +214,11 @@ describe("Dashboard Try On Now lifecycle", () => {
     await waitFor(() => expect(mocks.startQwenEdit).toHaveBeenCalled());
     expect(document.querySelector<HTMLInputElement>("input[type=file]")?.disabled).toBe(true);
     expect(screen.getByRole("button", { name: "PHOTO LOCKED WHILE TASK RUNS" }).hasAttribute("disabled")).toBe(true);
-    expect(screen.getByRole("button", { name: /use another photo/i })).toBeTruthy();
-    expect(screen.getByText(/Any XXX request already accepted by the server keeps running/i)).toBeTruthy();
+    expect(screen.getAllByRole("button", { name: /use another photo/i })).toHaveLength(1);
+    expect(screen.getByText(/Your XXX image is processing in the background/i)).toBeTruthy();
   });
 
-  it("shows Use Another Photo as soon as an XXX request starts, before direct-ComfyUI acknowledges it", async () => {
+  it("changes to Use Another Photo immediately after an XXX request begins", async () => {
     mocks.balance = 15;
     const request = deferred<{ taskId: number; status: "pending"; creditsRemaining: number; shirtApplied: string }>();
     mocks.startQwenEdit.mockReturnValue(request.promise);
@@ -221,7 +230,31 @@ describe("Dashboard Try On Now lifecycle", () => {
     expect(mocks.startQwenEdit).toHaveBeenCalled();
     expect(document.querySelector<HTMLInputElement>("input[type=file]")?.disabled).toBe(true);
     expect(screen.getByRole("button", { name: /use another photo/i })).toBeTruthy();
-    expect(screen.getByText(/Any XXX request already accepted by the server keeps running/i)).toBeTruthy();
+  });
+
+  it("requires OK acknowledgement before resetting for a new photo", async () => {
+    mocks.balance = 15;
+    mocks.startQwenEdit.mockResolvedValue({ taskId: 991, status: "pending", creditsRemaining: 5, shirtApplied: "XXX" });
+    render(<Dashboard />);
+    await selectOwnedPhotoAndShirt("XXX (10 Credits)");
+    fireEvent.click(screen.getByRole("button", { name: "Try on now" }));
+
+    await waitFor(() => expect(screen.getByRole("button", { name: /use another photo/i })).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: /use another photo/i }));
+
+    expect(screen.getByRole("alertdialog")).toBeTruthy();
+    expect(screen.getByText("No worry. Your processing photo is still running in the background. Please check your gallery.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "CANCEL" })).toBeNull();
+    expect(screen.getByAltText("Selected upload")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "OK" }));
+
+    await waitFor(() => {
+      expect(screen.queryByAltText("Selected upload")).toBeNull();
+      expect(screen.queryByRole("button", { name: /use another photo/i })).toBeNull();
+      expect(screen.getByRole("button", { name: "Try on now" })).toBeTruthy();
+      expect(document.querySelector<HTMLInputElement>("input[type=file]")?.disabled).toBe(false);
+    });
   });
 
   it("forwards unrestricted XXX prompt text unchanged to the durable background request", async () => {

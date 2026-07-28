@@ -118,3 +118,12 @@
 ## Scheduled Finalizer Verification
 - [x] Verify the active Heartbeat retrieves a completed direct-ComfyUI output from `oscarngan.ddns.net` and persists the result to Gallery.
 - [x] Normalize valid backslash-delimited ComfyUI output subfolders before secure validation, then verify Heartbeat persists the completed result to Gallery.
+
+## ButtonFix Branch
+- [x] Implement dynamic button state transitions and messaging for Dashboard
+- [x] Remove existing 'USE ANOTHER PHOTO' button
+- [x] When 'TRY ON NOW' is clicked for an XXX task, change button to 'USE ANOTHER PHOTO'
+- [x] When 'USE ANOTHER PHOTO' is clicked, show message 'No worry. Your processing photo is still running in the background. Please check your gallery.'
+- [x] Reset photo selection and allow new upload after 'USE ANOTHER PHOTO' click
+- [x] Add regression coverage for new button logic
+- [x] Rebuild and verify the complete ButtonFix flow after the interrupted implementation attempt.
