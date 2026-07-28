@@ -112,5 +112,5 @@
 
 ## UpdateJSON Branch
 - [x] Replace the embedded ComfyUI Qwen workflow with the user-provided `QwenImageEditRapidv1.0(External).json`, validate the affected integration, and publish the `UpdateJSON` branch to GitHub.
-- [ ] Commit the validated workflow replacement and push the `UpdateJSON` branch to the GitHub remote.
-- [ ] Verify the GitHub remote contains the pushed `UpdateJSON` branch.
+- [x] Commit the validated workflow replacement and push the `UpdateJSON` branch to the GitHub remote.
+- [x] Verify the GitHub remote contains the pushed `UpdateJSON` branch.
