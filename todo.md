@@ -109,3 +109,8 @@
 ## Remaining Tasks (Paused Until Local ComfyUI Restarts)
 - [x] After the user restarts local ComfyUI, rerun the live direct `system_stats` health check and complete the external integration regression suite.
 - [x] Keep all direct local-ComfyUI health and integration tests paused until the user explicitly confirms that the local ComfyUI service has restarted.
+
+## UpdateJSON Branch
+- [x] Replace the embedded ComfyUI Qwen workflow with the user-provided `QwenImageEditRapidv1.0(External).json`, validate the affected integration, and publish the `UpdateJSON` branch to GitHub.
+- [ ] Commit the validated workflow replacement and push the `UpdateJSON` branch to the GitHub remote.
+- [ ] Verify the GitHub remote contains the pushed `UpdateJSON` branch.

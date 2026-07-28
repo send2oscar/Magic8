@@ -61,13 +61,19 @@ describe("direct ComfyUI connection", () => {
     expect(() => createApprovedQwenWorkflow("../unsafe.png")).toThrow("invalid uploaded filename");
   });
 
-  it("omits the optional metadata chain that is incompatible with the direct ComfyUI host", () => {
+  it("preserves the supplied image-saver metadata chain and LoRA configuration", () => {
     const workflow = createApprovedQwenWorkflow("shirt-changer-input.png", "Use this exact prompt.");
 
-    expect(workflow[QWEN_OUTPUT_NODE_ID].inputs.metadata).toBeUndefined();
-    expect(workflow["104"]).toBeUndefined();
-    expect(workflow["106"]).toBeUndefined();
-    expect(workflow[QWEN_OUTPUT_NODE_ID].inputs.filename).toBe("shirt_changer_qwen_%time");
+    expect(workflow[QWEN_OUTPUT_NODE_ID].class_type).toBe("Image Saver Simple");
+    expect(workflow[QWEN_OUTPUT_NODE_ID].inputs.metadata).toEqual(["106", 0]);
+    expect(workflow[QWEN_OUTPUT_NODE_ID].inputs.filename).toBe("%time_%basemodelname_%seed");
+    expect(workflow["104"].class_type).toBe("WidgetToString");
+    expect(workflow["106"].class_type).toBe("Image Saver Metadata");
+    expect(workflow["103"].inputs.lora_1).toEqual({
+      on: true,
+      lora: "external_bb-v1.220.safetensors",
+      strength: 1,
+    });
   });
 
   it("recognizes an explicit direct-ComfyUI execution failure", async () => {

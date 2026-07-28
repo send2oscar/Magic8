@@ -15,9 +15,10 @@ describe("ComfyUI POC", () => {
     expect(workflow[QWEN_INPUT_NODE_ID].inputs.image).toBe("incoming/poc-input.png");
     expect(workflow["119"].inputs.prompt).toContain("put a blue shirt on the person");
     expect(workflow["118"].inputs.ckpt_name).toBe(APPROVED_QWEN_CHECKPOINT);
-    expect(workflow[QWEN_OUTPUT_NODE_ID].class_type).toBe("SaveImage");
-    expect(workflow["104"]).toBeUndefined();
-    expect(workflow["106"]).toBeUndefined();
+    expect(workflow[QWEN_OUTPUT_NODE_ID].class_type).toBe("Image Saver Simple");
+    expect(workflow[QWEN_OUTPUT_NODE_ID].inputs.metadata).toEqual(["106", 0]);
+    expect(workflow["104"].class_type).toBe("WidgetToString");
+    expect(workflow["106"].class_type).toBe("Image Saver Metadata");
   });
 
   it("preserves unrestricted prompt text while building a workflow without creating a request", () => {
@@ -53,7 +54,8 @@ describe("ComfyUI POC", () => {
 
     const submittedPayload = JSON.parse(fetchMock.mock.calls[1]?.[1]?.body as string);
     expect(submittedPayload.prompt[QWEN_INPUT_NODE_ID].inputs.image).toBe("incoming/poc-input.png");
-    expect(submittedPayload.prompt[QWEN_OUTPUT_NODE_ID].class_type).toBe("SaveImage");
+    expect(submittedPayload.prompt[QWEN_OUTPUT_NODE_ID].class_type).toBe("Image Saver Simple");
+    expect(submittedPayload.prompt[QWEN_OUTPUT_NODE_ID].inputs.metadata).toEqual(["106", 0]);
     expect(submittedPayload.client_id).toBe("poc-test-client");
     expect(fetchMock.mock.calls[3]?.[0]).toContain("filename=edited.png");
   });
