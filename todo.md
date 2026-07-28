@@ -114,3 +114,7 @@
 - [x] Replace the embedded ComfyUI Qwen workflow with the user-provided `QwenImageEditRapidv1.0(External).json`, validate the affected integration, and publish the `UpdateJSON` branch to GitHub.
 - [x] Commit the validated workflow replacement and push the `UpdateJSON` branch to the GitHub remote.
 - [x] Verify the GitHub remote contains the pushed `UpdateJSON` branch.
+
+## Scheduled Finalizer Verification
+- [ ] Verify the active Heartbeat retrieves a completed direct-ComfyUI output from `oscarngan.ddns.net` and persists the result to Gallery.
+- [ ] Normalize valid backslash-delimited ComfyUI output subfolders before secure validation, then verify Heartbeat persists the completed result to Gallery.

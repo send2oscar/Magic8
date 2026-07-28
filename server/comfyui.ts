@@ -123,6 +123,16 @@ function safeOutputPart(value: unknown, fieldName: string, allowSlash = false): 
   return value;
 }
 
+/**
+ * ComfyUI custom save nodes on Windows report output subfolders with a
+ * backslash delimiter. Convert only that separator before applying the same
+ * strict traversal and character checks used for every returned path part.
+ */
+function safeOutputSubfolder(value: unknown): string {
+  const normalized = typeof value === "string" ? value.replace(/\\/g, "/") : value;
+  return safeOutputPart(normalized, "output subfolder", true);
+}
+
 export type ComfyUiPrompt = { promptId: string; uploadedFilename: string };
 export type ComfyUiOutput = { filename: string; subfolder: string; type: string };
 export type ComfyUiTaskProgress = {
@@ -242,7 +252,7 @@ export async function getApprovedQwenOutput(promptId: string): Promise<ComfyUiOu
   const file = image[0] as Record<string, unknown>;
   return {
     filename: safeOutputPart(file.filename, "output filename"),
-    subfolder: typeof file.subfolder === "string" ? safeOutputPart(file.subfolder, "output subfolder", true) : "",
+    subfolder: typeof file.subfolder === "string" ? safeOutputSubfolder(file.subfolder) : "",
     type: typeof file.type === "string" ? safeOutputPart(file.type, "output type") : "output",
   };
 }
