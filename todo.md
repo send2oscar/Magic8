@@ -205,4 +205,4 @@
 - [x] Add a workflow compatibility guard that rejects GUI-only metadata dependencies before any direct ComfyUI submission.
 - [x] Add regression coverage for the submitted `/prompt` payload and for rejection of the previously failing node chain.
 - [x] Run the complete test suite, type checks, and a local-ComfyUI live verification of the repaired workflow.
-- [ ] Save a recovery checkpoint and synchronize the verified repair to GitHub main.
+- [x] Save a recovery checkpoint and synchronize the verified repair to GitHub main.
