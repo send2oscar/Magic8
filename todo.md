@@ -238,7 +238,7 @@
 - [x] Replace fixed credit costs across standard and XXX flows with the stored administrator credit policy.
 - [x] Deduct credits only after a result is successfully completed and saved; failed or incomplete generation attempts must not consume credits.
 - [x] Add backend and frontend regression coverage for payments, policies, authorization, idempotency, and dynamic deductions.
-- [ ] Validate the feature, save a checkpoint, and push the completed feature branch to GitHub.
+- [x] Validate the feature, save a checkpoint, and push the completed feature branch to GitHub.
 - [x] Seed the administrator credit policy with standard = 1 credit, XXX = 10 credits, and USD 1.00 per 10 credits.
 - [x] Seed editable fixed purchase packages for 100, 500, and 1,000 credits, with server-calculated USD amounts.
 - [x] Use PayPal Sandbox return-page capture only, with no credit grant until the server verifies a completed capture.
