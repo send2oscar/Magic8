@@ -20,6 +20,7 @@ export function CreditPurchasePanel({ onCreditsChanged }: CreditPurchasePanelPro
   const captureOrder = trpc.payments.capturePaypalOrder.useMutation();
   const cancelOrder = trpc.payments.cancelPaypalOrder.useMutation();
   const handledOrderId = useRef<string | null>(null);
+  const [pendingCapture, setPendingCapture] = React.useState<{ orderId: string; message: string } | null>(null);
 
   const clearReturnParameters = () => {
     const current = new URL(window.location.href);
@@ -49,6 +50,12 @@ export function CreditPurchasePanel({ onCreditsChanged }: CreditPurchasePanelPro
       toast.message("Confirming your PayPal payment…");
       captureOrder.mutate({ orderId }, {
         onSuccess: async (result) => {
+          if (result.status === "pending") {
+            setPendingCapture({ orderId, message: result.message });
+            toast.error(result.message);
+            clearReturnParameters();
+            return;
+          }
           await Promise.all([utils.payments.packages.invalidate(), onCreditsChanged?.()]);
           const wording = result.status === "already_completed" ? "was already added" : "has been added";
           toast.success(`${result.creditAmount} credits ${wording} to your balance.`);
@@ -61,6 +68,27 @@ export function CreditPurchasePanel({ onCreditsChanged }: CreditPurchasePanelPro
       });
     }
   }, [cancelOrder, captureOrder, onCreditsChanged, utils.payments.packages]);
+
+  const retryPendingCapture = () => {
+    if (!pendingCapture) return;
+    captureOrder.mutate({ orderId: pendingCapture.orderId }, {
+      onSuccess: async (result) => {
+        if (result.status === "pending") {
+          setPendingCapture({ orderId: pendingCapture.orderId, message: result.message });
+          toast.error(result.message);
+          return;
+        }
+        setPendingCapture(null);
+        await Promise.all([utils.payments.packages.invalidate(), onCreditsChanged?.()]);
+        const wording = result.status === "already_completed" ? "was already added" : "has been added";
+        toast.success(`${result.creditAmount} credits ${wording} to your balance.`);
+      },
+      onError: (error) => {
+        setPendingCapture(null);
+        toast.error(error.message || "PayPal could not confirm this checkout. No credits were added.");
+      },
+    });
+  };
 
   const startCheckout = async (packageId: number) => {
     try {
@@ -87,6 +115,17 @@ export function CreditPurchasePanel({ onCreditsChanged }: CreditPurchasePanelPro
         </div>
         <span className="inline-flex items-center gap-1 rounded border border-secondary/50 bg-secondary/10 px-2 py-1 text-xs font-semibold text-secondary"><ShieldCheck className="h-3.5 w-3.5" /> SANDBOX</span>
       </div>
+
+      {pendingCapture ? (
+        <div role="alert" className="mt-5 rounded border border-accent/50 bg-accent/10 p-4 text-sm text-foreground">
+          <p className="whitespace-pre-wrap break-words font-medium">{pendingCapture.message}</p>
+          <p className="mt-2 text-xs text-muted-foreground">After the administrator resolves the PayPal Sandbox account issue, retry confirmation. Credits remain unavailable until PayPal returns a completed capture.</p>
+          <Button type="button" variant="outline" onClick={retryPendingCapture} disabled={captureOrder.isPending} className="mt-3 border-accent/60 text-accent">
+            {captureOrder.isPending ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <ShieldCheck className="mr-2 h-4 w-4" />}
+            RETRY PAYPAL CONFIRMATION
+          </Button>
+        </div>
+      ) : null}
 
       {packages.isLoading ? (
         <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground"><LoaderCircle className="h-5 w-5 animate-spin text-accent" /> Loading credit packages…</div>

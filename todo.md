@@ -243,3 +243,7 @@
 - [x] Seed editable fixed purchase packages for 100, 500, and 1,000 credits, with server-calculated USD amounts.
 - [x] Use PayPal Sandbox return-page capture only, with no credit grant until the server verifies a completed capture.
 - [x] Keep every editable package’s USD amount server-derived from the active USD-per-10-credit policy whenever either setting changes.
+- [x] Trace the reported PayPal Sandbox return-page failure through the stored payment record, returned order ID, capture response, and full administrator-visible error log.
+- [x] Correct the return-page capture logic so an approved Sandbox order is captured and verified once before credits are granted; non-terminal `PENDING/UNILATERAL` captures remain uncredited and retryable.
+- [x] Add a regression covering the reported approved-but-not-captured order state and validate the corrected payment-ledger result, including 128 deterministic tests and a production build; the independent external ComfyUI endpoint test remains unavailable due to a socket hang-up.
+- [ ] Save a checkpoint and synchronize the PayPal capture correction to GitHub `PayPalPaymentGateway`.

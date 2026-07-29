@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { formatUsdFromCents } from "./creditPolicy";
 
 const PAYPAL_SANDBOX_API_BASE = "https://api-m.sandbox.paypal.com";
@@ -6,6 +7,25 @@ export class PayPalRequestError extends Error {
   constructor(message: string, readonly status?: number) {
     super(message);
     this.name = "PayPalRequestError";
+  }
+}
+
+export type PayPalCapturePendingDetails = {
+  captureId: string | null;
+  orderStatus: string | null;
+  captureStatus: string | null;
+  reason: string | null;
+};
+
+/** A non-terminal capture response. Credits must remain ungranted until it completes. */
+export class PayPalCapturePendingError extends PayPalRequestError {
+  constructor(readonly details: PayPalCapturePendingDetails) {
+    const reasonText = details.reason ? ` (reason: ${details.reason})` : "";
+    const remediation = details.reason === "UNILATERAL"
+      ? " The receiving PayPal Sandbox merchant email is not registered or confirmed. An administrator must confirm that receiving Sandbox account before retrying confirmation."
+      : " PayPal must complete this capture before credits can be added; retry confirmation later.";
+    super(`PayPal capture is still ${details.captureStatus ?? "pending"}${reasonText}. No credits were added.${remediation}`, 409);
+    this.name = "PayPalCapturePendingError";
   }
 }
 
@@ -18,6 +38,7 @@ type PayPalOrderResponse = {
     payments?: { captures?: Array<{
       id?: unknown;
       status?: unknown;
+      status_details?: { reason?: unknown };
       amount?: { currency_code?: unknown; value?: unknown };
     }> };
   }>;
@@ -136,18 +157,26 @@ export async function captureSandboxPaypalOrder(orderId: string) {
   const body = await sandboxApiRequest(`/v2/checkout/orders/${encodeURIComponent(orderId)}/capture`, {
     method: "POST",
     body: "{}",
+    headers: {
+      "PayPal-Request-Id": `shirt-changer-capture-${createHash("sha256").update(orderId).digest("hex")}`,
+    },
   });
   const capture = body.purchase_units?.[0]?.payments?.captures?.[0];
   const captureId = asNonEmptyString(capture?.id);
   const status = asNonEmptyString(capture?.status);
+  const reason = asNonEmptyString(capture?.status_details?.reason);
+  const orderStatus = asNonEmptyString(body.status);
   const currency = asNonEmptyString(capture?.amount?.currency_code);
   const rawValue = asNonEmptyString(capture?.amount?.value);
-  if (body.status !== "COMPLETED" || status !== "COMPLETED" || currency !== "USD" || !rawValue || !captureId) {
-    throw new PayPalRequestError("PayPal did not confirm a completed USD capture for this order.");
+  if (orderStatus === "COMPLETED" && status === "COMPLETED" && currency === "USD" && rawValue && captureId) {
+    const parsedCents = Math.round(Number(rawValue) * 100);
+    if (!Number.isSafeInteger(parsedCents) || parsedCents <= 0 || Math.abs(Number(rawValue) * 100 - parsedCents) > 0.000001) {
+      throw new PayPalRequestError("PayPal returned an invalid completed-capture amount.");
+    }
+    return { captureId, capturedAmountCents: parsedCents };
   }
-  const parsedCents = Math.round(Number(rawValue) * 100);
-  if (!Number.isSafeInteger(parsedCents) || parsedCents <= 0 || Math.abs(Number(rawValue) * 100 - parsedCents) > 0.000001) {
-    throw new PayPalRequestError("PayPal returned an invalid capture amount.");
+  if (status === "PENDING") {
+    throw new PayPalCapturePendingError({ captureId, orderStatus, captureStatus: status, reason });
   }
-  return { captureId, capturedAmountCents: parsedCents };
+  throw new PayPalRequestError(`PayPal did not confirm a completed USD capture (order status: ${orderStatus ?? "unknown"}; capture status: ${status ?? "unknown"}; currency: ${currency ?? "unknown"}).`);
 }

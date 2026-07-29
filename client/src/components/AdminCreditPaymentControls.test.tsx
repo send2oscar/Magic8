@@ -7,7 +7,10 @@ import { AdminCreditPaymentControls } from "./AdminCreditPaymentControls";
 const mocks = vi.hoisted(() => ({
   invalidate: vi.fn(),
   packageData: [{ id: 1, credits: 100, status: "active", sortOrder: 0, priceCents: 1000 }],
-  paymentData: [{ id: 9, username: "Ada Lovelace", email: "ada@example.test", creditAmount: 100, expectedAmountCents: 1000, status: "completed", orderId: "ORDER-123", createdAt: new Date("2026-07-29T00:00:00.000Z"), capturedAt: new Date("2026-07-29T00:01:00.000Z") }],
+  paymentData: [
+    { id: 9, username: "Ada Lovelace", email: "ada@example.test", creditAmount: 100, expectedAmountCents: 1000, status: "completed", orderId: "ORDER-123", failureDetail: null, createdAt: new Date("2026-07-29T00:00:00.000Z"), capturedAt: new Date("2026-07-29T00:01:00.000Z") },
+    { id: 10, username: "Grace Hopper", email: "grace@example.test", creditAmount: 500, expectedAmountCents: 5000, status: "pending", orderId: "ORDER-PENDING", failureDetail: "PayPal capture is still PENDING (reason: UNILATERAL). No credits were added.", createdAt: new Date("2026-07-29T00:02:00.000Z"), capturedAt: null },
+  ],
   policyData: { standardTryOnCredits: 1, xxxTryOnCredits: 10, priceCentsPerTenCredits: 100, updatedAt: new Date("2026-07-29T00:00:00.000Z") },
   savePackage: vi.fn(),
   savePolicy: vi.fn(),
@@ -63,6 +66,8 @@ describe("AdminCreditPaymentControls", () => {
     expect(screen.getByText("100")).toBeTruthy();
     expect(screen.getByText("completed")).toBeTruthy();
     expect(screen.getByText("ORDER-123")).toBeTruthy();
+    expect(screen.getByText("pending")).toBeTruthy();
+    expect(screen.getByText(/reason: UNILATERAL/)).toBeTruthy();
   });
 
   it("saves administrator credit policy values as integer cents and credit deductions", async () => {

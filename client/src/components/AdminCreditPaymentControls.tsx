@@ -154,7 +154,22 @@ export function AdminCreditPaymentControls() {
       <Card className="hud-frame bg-card/50 p-6">
         <div className="mb-5 flex items-center gap-2"><ReceiptText className="h-5 w-5 text-accent" /><div><h2 className="font-bold">PAYPAL PAYMENT RECORDS</h2><p className="mt-1 text-xs text-muted-foreground">Return-page capture records, including incomplete and failed Sandbox checkouts.</p></div></div>
         {payments.isLoading ? <div className="flex justify-center p-6"><LoaderCircle className="h-5 w-5 animate-spin text-accent" /></div> : payments.isError ? <p className="text-sm text-destructive">Unable to load PayPal payment records.</p> : payments.data?.length ? (
-          <div className="overflow-x-auto rounded border border-accent/25"><table className="w-full min-w-[880px] text-left text-sm"><thead className="bg-accent/10 text-xs uppercase tracking-wide text-muted-foreground"><tr><th className="px-4 py-3">Datetime</th><th className="px-4 py-3">Username</th><th className="px-4 py-3">Credits added</th><th className="px-4 py-3">USD</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">PayPal order</th></tr></thead><tbody className="divide-y divide-border">{payments.data.map(entry => <tr key={entry.id}><td className="px-4 py-3 text-muted-foreground">{dateTime(entry.capturedAt ?? entry.createdAt)}</td><td className="px-4 py-3"><p className="font-semibold">{entry.username || "Unnamed user"}</p><p className="text-xs text-muted-foreground">{entry.email || "No email"}</p></td><td className="px-4 py-3 font-semibold text-secondary">{entry.status === "completed" ? entry.creditAmount : 0}</td><td className="px-4 py-3">{amountUsd(entry.expectedAmountCents)}</td><td className="px-4 py-3"><span className={`rounded border px-2 py-1 text-xs font-bold uppercase ${entry.status === "completed" ? "border-secondary/50 bg-secondary/10 text-secondary" : entry.status === "failed" ? "border-destructive/50 bg-destructive/10 text-destructive" : "border-accent/40 bg-accent/10 text-accent"}`}>{entry.status}</span></td><td className="max-w-[14rem] break-all px-4 py-3 font-mono text-xs text-muted-foreground">{entry.orderId}</td></tr>)}</tbody></table></div>
+          <div className="overflow-x-auto rounded border border-accent/25">
+            <table className="w-full min-w-[1080px] text-left text-sm">
+              <thead className="bg-accent/10 text-xs uppercase tracking-wide text-muted-foreground"><tr><th className="px-4 py-3">Datetime</th><th className="px-4 py-3">Username</th><th className="px-4 py-3">Credits added</th><th className="px-4 py-3">USD</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">PayPal order</th><th className="px-4 py-3">Capture diagnostic</th></tr></thead>
+              <tbody className="divide-y divide-border">
+                {payments.data.map(entry => <tr key={entry.id}>
+                  <td className="px-4 py-3 text-muted-foreground">{dateTime(entry.capturedAt ?? entry.createdAt)}</td>
+                  <td className="px-4 py-3"><p className="font-semibold">{entry.username || "Unnamed user"}</p><p className="text-xs text-muted-foreground">{entry.email || "No email"}</p></td>
+                  <td className="px-4 py-3 font-semibold text-secondary">{entry.status === "completed" ? entry.creditAmount : 0}</td>
+                  <td className="px-4 py-3">{amountUsd(entry.expectedAmountCents)}</td>
+                  <td className="px-4 py-3"><span className={`rounded border px-2 py-1 text-xs font-bold uppercase ${entry.status === "completed" ? "border-secondary/50 bg-secondary/10 text-secondary" : entry.status === "failed" ? "border-destructive/50 bg-destructive/10 text-destructive" : "border-accent/40 bg-accent/10 text-accent"}`}>{entry.status}</span></td>
+                  <td className="max-w-[14rem] break-all px-4 py-3 font-mono text-xs text-muted-foreground">{entry.orderId}</td>
+                  <td className="max-w-[26rem] whitespace-pre-wrap break-words px-4 py-3 text-xs text-muted-foreground">{entry.failureDetail || "—"}</td>
+                </tr>)}
+              </tbody>
+            </table>
+          </div>
         ) : <p className="text-sm text-muted-foreground">No PayPal purchase attempts have been recorded.</p>}
       </Card>
     </div>
