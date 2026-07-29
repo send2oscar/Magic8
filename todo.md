@@ -138,7 +138,7 @@
 - [x] Verify the remote main protection policy: pull requests and linear history are required, while force-pushes and branch deletion are disabled.
 - [x] Save a recovery checkpoint for the verified workflow synchronization and protected main merge.
 - [x] Require the successful GitHub Test status check and merge the protected safeguards and all-task error-log pull request.
-- [ ] Save a recovery checkpoint for the required-test safeguard and all-task admin error logs.
+- [x] Save a recovery checkpoint for the required-test safeguard and all-task admin error logs.
 
 ## Submitted ComfyUI Workflow Synchronization
 - [x] Compare the user-supplied Qwen workflow with the current approved workflow and identify the three LoRA-node mappings.
