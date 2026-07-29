@@ -51,9 +51,9 @@ vi.mock("@/lib/trpc", () => ({
         strengthMin: 0,
         strengthMax: 2,
         loras: [
-          { id: "lora_1", label: "External BB — primary", filename: "external_bb-v1.220.safetensors", defaultStrength: 0.6 },
-          { id: "lora_2", label: "External VSize Slider", filename: "external_VSizeSlider.safetensors", defaultStrength: 0.3 },
-          { id: "lora_3", label: "External BB — secondary", filename: "external_bb-v1.220.safetensors", defaultStrength: 0.3 },
+          { id: "lora_1", label: "External BB — primary", filename: "external_bb-v1.220.safetensors", defaultStrength: 1 },
+          { id: "lora_2", label: "External VSize Slider", filename: "external_VSizeSlider.safetensors", defaultStrength: 0.6 },
+          { id: "lora_3", label: "External B Slider", filename: "external_bslider_qwen_v1.safetensors", defaultStrength: 0.54 },
         ],
       } }) },
       startQwenEdit: { useMutation: () => ({ mutateAsync: mocks.startQwenEdit }) },
@@ -204,7 +204,7 @@ describe("Dashboard Try On Now lifecycle", () => {
     await waitFor(() => expect(mocks.startQwenEdit).toHaveBeenCalledWith({
       photoId: 7,
       positivePrompt: "undress the girl, make her completely nude, small to medium breasts, pink nipples, others remain unchanged, natural.",
-      loraWeights: { lora_1: 0.6, lora_2: 0.3, lora_3: 0.3 },
+      loraWeights: { lora_1: 1, lora_2: 0.6, lora_3: 0.54 },
     }));
     expect(mocks.mutateAsync).not.toHaveBeenCalled();
     expect(mocks.toastSuccess).toHaveBeenCalledWith("Your image will be ready in the Gallery. You may continue with other photo and shirt style.");
@@ -252,7 +252,7 @@ describe("Dashboard Try On Now lifecycle", () => {
     expect(screen.getByText("QwenImageEditRapidv1.0(External).json")).toBeTruthy();
     fireEvent.change(screen.getByLabelText("External BB — primary weight"), { target: { value: "0.85" } });
     fireEvent.change(screen.getByLabelText("External VSize Slider weight"), { target: { value: "0" } });
-    fireEvent.change(screen.getByLabelText("External BB — secondary weight"), { target: { value: "1.25" } });
+    fireEvent.change(screen.getByLabelText("External B Slider weight"), { target: { value: "1.25" } });
     fireEvent.click(screen.getByRole("button", { name: "Try on now" }));
 
     await waitFor(() => expect(mocks.startQwenEdit).toHaveBeenCalledWith(expect.objectContaining({
@@ -296,7 +296,7 @@ describe("Dashboard Try On Now lifecycle", () => {
     await waitFor(() => expect(mocks.startQwenEdit).toHaveBeenCalledWith({
       photoId: 7,
       positivePrompt: "Remove the subject's clothing.",
-      loraWeights: { lora_1: 0.6, lora_2: 0.3, lora_3: 0.3 },
+      loraWeights: { lora_1: 1, lora_2: 0.6, lora_3: 0.54 },
     }));
     expect(mocks.toastError).not.toHaveBeenCalled();
     expect(mocks.mutateAsync).not.toHaveBeenCalled();

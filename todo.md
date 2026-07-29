@@ -126,3 +126,14 @@
 - [x] Add bounded server-side validation and Dashboard controls for editing the LoRA weight without allowing arbitrary workflow changes.
 - [x] Add regression coverage and verify the selected LoRA weight is submitted with the approved workflow.
 - [x] Save a combined recovery checkpoint containing the verified Gallery and LoRA changes.
+
+## Release Safeguards
+- [x] Inspect the GitHub repository, remote branch state, and current protection rules for main.
+- [ ] Add a GitHub Actions test workflow and a RELEASE.md that records the verified release sequence.
+- [x] Protect main against force-pushes and deletion, requiring pull-request-based releases.
+- [ ] Verify the remote protections and release files, then save a recovery checkpoint.
+
+## Submitted ComfyUI Workflow Synchronization
+- [x] Compare the user-supplied Qwen workflow with the current approved workflow and identify the three LoRA-node mappings.
+- [x] Update the approved workflow and retain bounded Dashboard controls mapped to the corresponding submitted LoRAs.
+- [ ] Add regression coverage, verify the generated ComfyUI payload, and prepare a protected-branch pull request for the adjustment.

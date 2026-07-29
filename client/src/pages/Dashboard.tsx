@@ -21,7 +21,7 @@ const QWEN_EDIT_STYLE_ID = "qwen-image-edit-rapid";
 const IDLE_QWEN_TASK_ID = 1;
 type QwenLoraId = "lora_1" | "lora_2" | "lora_3";
 type QwenLoraWeights = Record<QwenLoraId, number>;
-const DEFAULT_QWEN_LORA_WEIGHTS: QwenLoraWeights = { lora_1: 0.6, lora_2: 0.3, lora_3: 0.3 };
+const DEFAULT_QWEN_LORA_WEIGHTS: QwenLoraWeights = { lora_1: 1, lora_2: 0.6, lora_3: 0.54 };
 const SHIRT_PROMPTS: Record<string, string> = {
   "classic-white": "Change the current shirt to a crisp classic white crew-neck T-shirt. Preserve the person's face, pose, hands, body proportions, and background.",
   "neon-pink": "Change the current shirt to a vivid neon pink T-shirt with realistic fabric texture and lighting. Preserve the person's face, pose, hands, body proportions, and background.",
@@ -542,9 +542,9 @@ export default function Dashboard() {
                     </div>
                     <div className="grid gap-3">
                       {(qwenWorkflowQuery.data?.loras ?? [
-                        { id: "lora_1", label: "External BB — primary", filename: "external_bb-v1.220.safetensors", defaultStrength: 0.6 },
-                        { id: "lora_2", label: "External VSize Slider", filename: "external_VSizeSlider.safetensors", defaultStrength: 0.3 },
-                        { id: "lora_3", label: "External BB — secondary", filename: "external_bb-v1.220.safetensors", defaultStrength: 0.3 },
+                        { id: "lora_1", label: "External BB — primary", filename: "external_bb-v1.220.safetensors", defaultStrength: 1 },
+                        { id: "lora_2", label: "External VSize Slider", filename: "external_VSizeSlider.safetensors", defaultStrength: 0.6 },
+                        { id: "lora_3", label: "External B Slider", filename: "external_bslider_qwen_v1.safetensors", defaultStrength: 0.54 },
                       ]).map(lora => (
                         <label key={lora.id} className="grid gap-1 sm:grid-cols-[minmax(0,1fr)_7rem] sm:items-center">
                           <span className="min-w-0">
