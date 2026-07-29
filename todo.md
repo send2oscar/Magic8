@@ -109,3 +109,9 @@
 ## Remaining Tasks (Paused Until Local ComfyUI Restarts)
 - [x] After the user restarts local ComfyUI, rerun the live direct `system_stats` health check and complete the external integration regression suite.
 - [x] Keep all direct local-ComfyUI health and integration tests paused until the user explicitly confirms that the local ComfyUI service has restarted.
+
+## ButtonFix Recovery
+- [x] Diagnose and restore the single refresh-style ButtonFix flow after the user reported the deployed Dashboard reverted to duplicated controls.
+- [ ] Commit the restored ButtonFix Dashboard and regression-test changes on main.
+- [ ] Push the restored ButtonFix commit to the GitHub main branch.
+- [ ] Save a recovery checkpoint for the restored ButtonFix behavior.

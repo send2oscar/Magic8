@@ -2,11 +2,12 @@ import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
 import { advanceTryOnProgress, getTryOnProgressLabel } from "@/lib/tryOnProgress";
 import React, { useEffect, useRef, useState } from "react";
-import { Zap, Upload, LogOut, Shirt, RefreshCw } from "lucide-react";
+import { Zap, Upload, LogOut, Shirt } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/_core/hooks/useAuth";
 
@@ -61,8 +62,10 @@ export default function Dashboard() {
   const [activeQwenTaskId, setActiveQwenTaskId] = useState<number | null>(null);
   const [backgroundQwenError, setBackgroundQwenError] = useState<string | null>(null);
   const [hasTaskSubmissionStarted, setHasTaskSubmissionStarted] = useState(false);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
   const hasAppliedDefaultPrompt = useRef(false);
   const notifiedTerminalQwenTaskId = useRef<number | null>(null);
+  const qwenSubmissionEpoch = useRef(0);
 
   // tRPC queries and mutations
   const creditsQuery = trpc.credits.getBalance.useQuery();
@@ -126,6 +129,7 @@ export default function Dashboard() {
 
     notifiedTerminalQwenTaskId.current = activeQwenTaskId;
     setActiveQwenTaskId(null);
+    setHasTaskSubmissionStarted(false);
     setLocalTaskStages([]);
     void creditsQuery.refetch();
     void photosQuery.refetch();
@@ -168,6 +172,25 @@ export default function Dashboard() {
   const handleLogout = async () => {
     await logout();
     setLocation("/");
+  };
+
+  const handleUseAnotherPhoto = () => {
+    setShowResetConfirm(true);
+  };
+
+  const confirmReset = () => {
+    setShowResetConfirm(false);
+    qwenSubmissionEpoch.current += 1;
+    setSelectedPhoto(null);
+    setHasTaskSubmissionStarted(false);
+    setResultData(null);
+    setShowResult(false);
+    setIsTryingOn(false);
+    setLocalTaskStages([]);
+    setActiveQwenTaskId(null);
+    setBackgroundQwenError(null);
+    notifiedTerminalQwenTaskId.current = null;
+    tryOnInFlight.current = false;
   };
 
   const isPhotoSelectionLocked = hasTaskSubmissionStarted || isTryingOn || activeQwenTaskId !== null;
@@ -261,9 +284,6 @@ export default function Dashboard() {
 
     if (tryOnInFlight.current) return;
 
-    // Lock the current workspace as soon as the user starts a valid request.
-    // This intentionally does not wait for a direct-ComfyUI acknowledgment.
-    setHasTaskSubmissionStarted(true);
     const isQwenEdit = selectedShirt === QWEN_EDIT_STYLE_ID;
     const requiredCredits = isQwenEdit ? 10 : 1;
 
@@ -277,6 +297,10 @@ export default function Dashboard() {
       return;
     }
 
+    // Lock the current workspace as soon as a valid request is submitted.
+    // For Qwen, this deliberately enables the single "USE ANOTHER PHOTO"
+    // action before ComfyUI acknowledges the request.
+    setHasTaskSubmissionStarted(true);
     tryOnInFlight.current = true;
     setIsTryingOn(true);
     setLocalTaskStages([
@@ -285,6 +309,7 @@ export default function Dashboard() {
     ]);
     try {
       if (isQwenEdit) {
+        const submissionEpoch = qwenSubmissionEpoch.current;
         setLocalTaskStages([
           { key: "XXX request sent", label: "XXX request sent", state: "completed", timestamp: Date.now() },
           { key: "comfy_queue", label: "Sending the XXX edit to ComfyUI", state: "active", detail: "The application server is submitting the fixed Qwen workflow directly to ComfyUI.", timestamp: Date.now() },
@@ -293,6 +318,10 @@ export default function Dashboard() {
           photoId: selectedPhoto.id,
           positivePrompt,
         });
+        if (submissionEpoch !== qwenSubmissionEpoch.current) {
+          await creditsQuery.refetch();
+          return;
+        }
         notifiedTerminalQwenTaskId.current = null;
         setBackgroundQwenError(null);
         setActiveQwenTaskId(result.taskId);
@@ -316,14 +345,19 @@ export default function Dashboard() {
     } catch (error: any) {
       toast.error(error?.message || "Failed to process try-on");
       console.error(error);
+      if (isQwenEdit) setHasTaskSubmissionStarted(false);
     } finally {
       setIsTryingOn(false);
-      if (!isQwenEdit) setLocalTaskStages([]);
+      if (!isQwenEdit) {
+        setLocalTaskStages([]);
+        setHasTaskSubmissionStarted(false);
+      }
       tryOnInFlight.current = false;
     }
   };
 
   const isBackgroundQwenTask = activeQwenTaskId !== null;
+  const shouldOfferAnotherPhoto = selectedShirt === QWEN_EDIT_STYLE_ID && hasTaskSubmissionStarted;
   const hasVisibleTask = isTryingOn || isBackgroundQwenTask;
   const qwenTaskStatus = qwenEditStatusQuery.data;
   const qwenTaskStages = qwenTaskStatus && "stages" in qwenTaskStatus && Array.isArray(qwenTaskStatus.stages)
@@ -425,22 +459,6 @@ export default function Dashboard() {
                   {isUploading ? "UPLOADING..." : isPhotoSelectionLocked ? "PHOTO LOCKED WHILE TASK RUNS" : "SELECT PHOTO"}
                 </Button>
               </label>
-              {isPhotoSelectionLocked && (
-                <div className="space-y-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="w-full border-accent text-accent hover:bg-accent/10"
-                    onClick={() => window.location.reload()}
-                  >
-                    <RefreshCw className="mr-2 h-4 w-4" />
-                    USE ANOTHER PHOTO
-                  </Button>
-                  <p className="text-xs text-muted-foreground">
-                    This reloads the workspace for a new task. Any XXX request already accepted by the server keeps running and will be saved to Gallery when it finishes.
-                  </p>
-                </div>
-              )}
             </div>
           </Card>
 
@@ -499,13 +517,13 @@ export default function Dashboard() {
               <div className="space-y-4">
                 <h2 className="text-2xl font-bold neon-pink">TRY ON</h2>
                 <Button
-                  onClick={handleTryOn}
-                  disabled={isTryingOn || !selectedPhoto || !selectedShirt}
-                  aria-busy={isTryingOn}
-                  aria-label={isTryingOn ? `${liveProgressLabel}: ${liveProgress}% complete` : "Try on now"}
+                  onClick={shouldOfferAnotherPhoto ? handleUseAnotherPhoto : handleTryOn}
+                  disabled={!shouldOfferAnotherPhoto && (!selectedPhoto?.id || !selectedShirt || isUploading || isTryingOn)}
+                  aria-busy={isTryingOn && !shouldOfferAnotherPhoto}
+                  aria-label={shouldOfferAnotherPhoto ? "Use another photo" : (isTryingOn ? `${liveProgressLabel}: ${liveProgress}% complete` : "Try on now")}
                   className="relative w-full overflow-hidden px-6 py-4 bg-accent text-background font-bold border-2 border-accent text-lg"
                 >
-                  {isTryingOn && (
+                  {isTryingOn && !isBackgroundQwenTask && (
                     <span
                       aria-hidden="true"
                       className="absolute inset-y-0 left-0 bg-background/20 transition-[width] duration-1000 ease-out"
@@ -515,7 +533,7 @@ export default function Dashboard() {
                   <span
                     className="relative z-10"
                   >
-                    {isTryingOn ? `${liveProgressLabel} • ${liveProgress}%` : "TRY ON NOW"}
+                    {shouldOfferAnotherPhoto ? "USE ANOTHER PHOTO" : (isTryingOn ? `${liveProgressLabel} • ${liveProgress}%` : "TRY ON NOW")}
                   </span>
                 </Button>
                 {hasVisibleTask && (
@@ -573,6 +591,20 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
+      <AlertDialog open={showResetConfirm} onOpenChange={setShowResetConfirm}>
+        <AlertDialogContent className="border-accent bg-card">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-xl font-bold neon-cyan">USE ANOTHER PHOTO</AlertDialogTitle>
+            <AlertDialogDescription className="text-foreground">
+              No worry. Your processing photo is still running in the background. Please check your gallery.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={confirmReset} className="bg-accent text-background hover:bg-accent/90">OK</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Result Dialog */}
       <Dialog open={showResult} onOpenChange={setShowResult}>
