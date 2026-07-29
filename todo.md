@@ -206,3 +206,13 @@
 - [x] Add regression coverage for the submitted `/prompt` payload and for rejection of the previously failing node chain.
 - [x] Run the complete test suite, type checks, and a local-ComfyUI live verification of the repaired workflow.
 - [x] Save a recovery checkpoint and synchronize the verified repair to GitHub main.
+
+## Heartbeat Status Investigation
+- [x] Investigate the current ComfyUI finalizer Heartbeat configuration and execution history without changing code, schedules, database records, or endpoint settings; the scheduler works, while Gallery finalization was blocked by valid empty output subfolders.
+
+## ComfyUI Gallery Synchronization Repair
+- [x] Accept ComfyUI `SaveImage` outputs whose valid root output folder is represented by an empty `subfolder` value.
+- [x] Add regression coverage for empty-subfolder output discovery and download while retaining path-traversal protections.
+- [x] Run the complete test suite, TypeScript checks, and production build.
+- [x] Confirm the two completed local-ComfyUI tasks remain successful with persisted Gallery result URLs.
+- [ ] Save a recovery checkpoint and synchronize the verified repair to GitHub main.

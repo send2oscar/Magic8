@@ -119,8 +119,8 @@ function imageContentType(contentType: string | null, fallbackKey: string): stri
   return `image/${extensionFor("", fallbackKey) === "jpg" ? "jpeg" : extensionFor("", fallbackKey)}`;
 }
 
-function safeOutputPart(value: unknown, fieldName: string, allowSlash = false): string {
-  if (typeof value !== "string" || !value || value.includes("..")) {
+function safeOutputPart(value: unknown, fieldName: string, allowSlash = false, allowEmpty = false): string {
+  if (typeof value !== "string" || (!allowEmpty && !value) || value.includes("..")) {
     throw new ComfyUiRemoteError(`ComfyUI returned an invalid ${fieldName}.`);
   }
   // ComfyUI running on Windows can report an otherwise-valid output subfolder
@@ -130,7 +130,9 @@ function safeOutputPart(value: unknown, fieldName: string, allowSlash = false): 
   if (normalized.includes("..")) {
     throw new ComfyUiRemoteError(`ComfyUI returned an invalid ${fieldName}.`);
   }
-  const pattern = allowSlash ? /^[A-Za-z0-9._/-]+$/ : /^[A-Za-z0-9._-]+$/;
+  const pattern = allowSlash
+    ? allowEmpty ? /^[A-Za-z0-9._/-]*$/ : /^[A-Za-z0-9._/-]+$/
+    : allowEmpty ? /^[A-Za-z0-9._-]*$/ : /^[A-Za-z0-9._-]+$/;
   if (!pattern.test(normalized)) throw new ComfyUiRemoteError(`ComfyUI returned an invalid ${fieldName}.`);
   return normalized;
 }
@@ -262,7 +264,9 @@ export async function getApprovedQwenOutput(promptId: string): Promise<ComfyUiOu
   const file = image[0] as Record<string, unknown>;
   return {
     filename: safeOutputPart(file.filename, "output filename"),
-    subfolder: typeof file.subfolder === "string" ? safeOutputPart(file.subfolder, "output subfolder", true) : "",
+    // ComfyUI uses an empty subfolder for files saved directly in its root
+    // output directory. It is valid and must be omitted from the `/view` query.
+    subfolder: typeof file.subfolder === "string" ? safeOutputPart(file.subfolder, "output subfolder", true, true) : "",
     type: typeof file.type === "string" ? safeOutputPart(file.type, "output type") : "output",
   };
 }

@@ -2,6 +2,7 @@ import axios from "axios";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   checkComfyUiConnection,
+  downloadApprovedQwenOutput,
   getApprovedQwenOutput,
   getApprovedQwenTaskProgress,
   submitApprovedQwenEdit,
@@ -179,6 +180,56 @@ describe("direct ComfyUI connection", () => {
       subfolder: "qwen_edit/2026-07-29",
       type: "output",
     });
+  });
+
+  it("accepts a root output with an empty subfolder and downloads it for Gallery storage", async () => {
+    ENV.comfyuiServerUrl = "http://oscarngan.ddns.net:8188";
+    mocks.request
+      .mockResolvedValueOnce(axiosResponse({
+        task: {
+          status: { status_str: "success" },
+          outputs: {
+            [QWEN_OUTPUT_NODE_ID]: {
+              images: [{ filename: "shirt-changer-qwen_00003_.png", subfolder: "", type: "output" }],
+            },
+          },
+        },
+      }))
+      .mockResolvedValueOnce({
+        status: 200,
+        data: Buffer.from([137, 80, 78, 71]),
+        headers: { "content-type": "image/png" },
+      });
+
+    const output = await getApprovedQwenOutput("task");
+    expect(output).toEqual({
+      filename: "shirt-changer-qwen_00003_.png",
+      subfolder: "",
+      type: "output",
+    });
+    await expect(downloadApprovedQwenOutput(output!)).resolves.toMatchObject({
+      contentType: "image/png",
+      data: Buffer.from([137, 80, 78, 71]),
+    });
+    expect(mocks.request.mock.calls[1]?.[0].url).toBe(
+      "http://oscarngan.ddns.net:8188/view?filename=shirt-changer-qwen_00003_.png&type=output",
+    );
+  });
+
+  it("continues to reject traversal in ComfyUI output subfolders", async () => {
+    ENV.comfyuiServerUrl = "http://oscarngan.ddns.net:8188";
+    mocks.request.mockResolvedValue(axiosResponse({
+      task: {
+        status: { status_str: "success" },
+        outputs: {
+          [QWEN_OUTPUT_NODE_ID]: {
+            images: [{ filename: "shirt-changer-qwen.png", subfolder: "../private", type: "output" }],
+          },
+        },
+      },
+    }));
+
+    await expect(getApprovedQwenOutput("task")).rejects.toThrow("invalid output subfolder");
   });
 
   it("reports the prompt's truthful queued position without inventing a duration estimate", async () => {
