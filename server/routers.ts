@@ -30,6 +30,7 @@ import {
   getCreditPolicy,
   getCreditCostForRoute,
   getPaypalPaymentForUser,
+  markPaypalPaymentPending,
   markPaypalPaymentStatus,
   saveAdminCreditPackage,
   updateCreditPolicy,
@@ -70,7 +71,7 @@ import {
   QWEN_WORKFLOW_FILE_NAME,
 } from "./comfyuiQwenWorkflow";
 import { calculatePackagePriceCents, formatUsdFromCents } from "./creditPolicy";
-import { captureSandboxPaypalOrder, createSandboxPaypalOrder, PayPalRequestError } from "./paypal";
+import { captureSandboxPaypalOrder, createSandboxPaypalOrder, PayPalCapturePendingError, PayPalRequestError } from "./paypal";
 
 // Shirt styles available for try-on
 const SHIRT_STYLES = [
@@ -434,7 +435,7 @@ export const appRouter = router({
         if (payment.status === "completed") {
           return { status: "already_completed" as const, creditAmount: payment.creditAmount };
         }
-        if (payment.status !== "created") {
+        if (payment.status !== "created" && payment.status !== "pending") {
           throw new TRPCError({ code: "PRECONDITION_FAILED", message: "This PayPal checkout is no longer eligible for capture. Start a new purchase if you still need credits." });
         }
         try {
@@ -455,6 +456,27 @@ export const appRouter = router({
           return { status: fulfilled.status, creditAmount: fulfilled.creditAmount ?? payment.creditAmount };
         } catch (error) {
           if (error instanceof TRPCError) throw error;
+          if (error instanceof PayPalCapturePendingError) {
+            const recorded = await markPaypalPaymentPending({
+              userId: ctx.user.id,
+              orderId: input.orderId,
+              captureId: error.details.captureId,
+              failureDetail: error.message,
+            });
+            if (!recorded) {
+              console.error("[PayPal] Pending Sandbox capture could not be persisted", { userId: ctx.user.id, orderId: input.orderId, error: error.message });
+              throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "PayPal reported a pending capture, but the payment ledger could not be updated. No credits were added; please contact an administrator." });
+            }
+            console.warn("[PayPal] Sandbox capture pending", {
+              userId: ctx.user.id,
+              orderId: input.orderId,
+              captureId: error.details.captureId,
+              orderStatus: error.details.orderStatus,
+              captureStatus: error.details.captureStatus,
+              reason: error.details.reason,
+            });
+            return { status: "pending" as const, creditAmount: 0, message: error.message };
+          }
           await markPaypalPaymentStatus(
             ctx.user.id,
             input.orderId,

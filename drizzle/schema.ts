@@ -102,7 +102,7 @@ export const paypalPayments = mysqlTable("paypal_payments", {
   captureId: varchar("captureId", { length: 127 }).unique(),
   creditAmount: int("creditAmount").notNull(),
   expectedAmountCents: int("expectedAmountCents").notNull(),
-  status: mysqlEnum("status", ["created", "completed", "failed", "cancelled"]).default("created").notNull(),
+  status: mysqlEnum("status", ["created", "pending", "completed", "failed", "cancelled"]).default("created").notNull(),
   failureDetail: longtext("failureDetail"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   capturedAt: timestamp("capturedAt"),

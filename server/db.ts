@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   InsertUser,
@@ -331,12 +331,41 @@ export async function markPaypalPaymentStatus(
       .where(and(
         eq(paypalPayments.userId, userId),
         eq(paypalPayments.orderId, orderId),
-        eq(paypalPayments.status, "created"),
+        inArray(paypalPayments.status, ["created", "pending"]),
       ));
     const header = Array.isArray(result) ? result[0] : result;
     return Number((header as { affectedRows?: unknown }).affectedRows ?? 0) === 1;
   } catch (error) {
     console.error("[Database] Failed to update PayPal payment status:", error);
+    return false;
+  }
+}
+
+/** Record a non-terminal PayPal capture and keep it eligible for safe retry. */
+export async function markPaypalPaymentPending(input: {
+  userId: number;
+  orderId: string;
+  captureId: string | null;
+  failureDetail: string;
+}) {
+  const db = await getDb();
+  if (!db) return false;
+  try {
+    const result = await db.update(paypalPayments)
+      .set({
+        status: "pending",
+        captureId: input.captureId,
+        failureDetail: input.failureDetail.slice(0, 4_000),
+      })
+      .where(and(
+        eq(paypalPayments.userId, input.userId),
+        eq(paypalPayments.orderId, input.orderId),
+        inArray(paypalPayments.status, ["created", "pending"]),
+      ));
+    const header = Array.isArray(result) ? result[0] : result;
+    return Number((header as { affectedRows?: unknown }).affectedRows ?? 0) === 1;
+  } catch (error) {
+    console.error("[Database] Failed to record pending PayPal capture:", error);
     return false;
   }
 }
@@ -369,17 +398,17 @@ export async function fulfillPaypalPayment(input: {
       if (payment.status === "completed") {
         return { status: "already_completed", creditAmount: payment.creditAmount };
       }
-      if (payment.status !== "created") return { status: "not_capturable" };
+      if (payment.status !== "created" && payment.status !== "pending") return { status: "not_capturable" };
       if (payment.expectedAmountCents !== input.capturedAmountCents) {
         await tx.update(paypalPayments)
           .set({ status: "failed", failureDetail: "Captured USD amount did not match the server-created order." })
-          .where(and(eq(paypalPayments.id, payment.id), eq(paypalPayments.status, "created")));
+          .where(and(eq(paypalPayments.id, payment.id), inArray(paypalPayments.status, ["created", "pending"])));
         return { status: "amount_mismatch" };
       }
 
       const paymentUpdate = await tx.update(paypalPayments)
         .set({ status: "completed", captureId: input.captureId, capturedAt: new Date(), failureDetail: null })
-        .where(and(eq(paypalPayments.id, payment.id), eq(paypalPayments.status, "created")));
+        .where(and(eq(paypalPayments.id, payment.id), inArray(paypalPayments.status, ["created", "pending"])));
       const paymentHeader = Array.isArray(paymentUpdate) ? paymentUpdate[0] : paymentUpdate;
       if (Number((paymentHeader as { affectedRows?: unknown }).affectedRows ?? 0) !== 1) {
         return { status: "not_capturable" };
@@ -411,6 +440,7 @@ export async function getAdminPaypalPayments(limit: number = 100) {
       creditAmount: paypalPayments.creditAmount,
       expectedAmountCents: paypalPayments.expectedAmountCents,
       status: paypalPayments.status,
+      failureDetail: paypalPayments.failureDetail,
       createdAt: paypalPayments.createdAt,
       capturedAt: paypalPayments.capturedAt,
       username: users.name,
