@@ -1,0 +1,48 @@
+name: Test
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      ADMIN_USERNAME: ci-admin
+      ADMIN_PASSWORD: ci-only-test-password
+      ADMIN_SESSION_SECRET: ci-only-test-session-secret
+      BUBBLE_API_URL: https://magic8-78745.bubbleapps.io/version-test/api/1.1
+      BUBBLE_API_TOKEN: ci-only-placeholder-token
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Type check
+        run: pnpm check
+
+      - name: Run deterministic regression suite
+        run: pnpm test:ci
+
+      - name: Build production bundle
+        run: pnpm build

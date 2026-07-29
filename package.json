@@ -10,6 +10,7 @@
     "check": "tsc --noEmit",
     "format": "prettier --write .",
     "test": "vitest run",
+    "test:ci": "vitest run --exclude server/comfyui.direct-endpoint.test.ts",
     "db:push": "drizzle-kit generate && drizzle-kit migrate",
     "bridge:pair": "tsx bridge/shirt-changer-bridge.ts pair",
     "bridge:run": "tsx bridge/shirt-changer-bridge.ts run",

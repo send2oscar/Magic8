@@ -129,12 +129,24 @@
 
 ## Release Safeguards
 - [x] Inspect the GitHub repository, remote branch state, and current protection rules for main.
-- [ ] Reauthorize the GitHub integration with workflow-write permission, then add the GitHub Actions test workflow and RELEASE.md release record.
+- [x] Reauthorize the GitHub integration with workflow-write permission.
+- [x] Add a GitHub Actions test workflow and a RELEASE.md that records the verified release sequence.
+- [x] Fix the GitHub Actions pnpm setup so the required Test check can install dependencies from the package-manager declaration.
+- [x] Configure non-production administrator credentials for the mocked CI regression tests.
+- [x] Configure non-production Bubble API values and exclude the opt-in live ComfyUI endpoint probe from the deterministic CI suite.
 - [x] Protect main against force-pushes and deletion, requiring pull-request-based releases.
 - [x] Verify the remote main protection policy: pull requests and linear history are required, while force-pushes and branch deletion are disabled.
-- [ ] Save a recovery checkpoint for the verified workflow synchronization and protected main merge.
+- [x] Save a recovery checkpoint for the verified workflow synchronization and protected main merge.
+- [x] Require the successful GitHub Test status check and merge the protected safeguards and all-task error-log pull request.
+- [ ] Save a recovery checkpoint for the required-test safeguard and all-task admin error logs.
 
 ## Submitted ComfyUI Workflow Synchronization
 - [x] Compare the user-supplied Qwen workflow with the current approved workflow and identify the three LoRA-node mappings.
 - [x] Update the approved workflow and retain bounded Dashboard controls mapped to the corresponding submitted LoRAs.
 - [x] Add regression coverage, verify the generated ComfyUI payload, and merge the protected pull request for the adjustment.
+
+## Admin Error Log Coverage
+- [x] Inspect the existing admin error-log query, task-history schema, and Admin Workspace panel to identify why only XXX errors appear.
+- [x] Extend the administrator data flow to include complete logs for every failed image-generation task type.
+- [x] Update the Admin Workspace label and rendering so each full raw error remains readable and distinguishable by task type.
+- [x] Add regression coverage and verify the expanded all-task error-log panel.

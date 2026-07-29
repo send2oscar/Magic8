@@ -568,7 +568,7 @@ function getStoredTaskFailureDetail(serialized: string | null): string | null {
   }
 }
 
-/** Return full failure diagnostics for the selected user's durable XXX jobs. */
+/** Return complete failure diagnostics for every failed image-generation task owned by the selected user. */
 export async function getAdminUserTaskErrors(userId: number, limit: number = 50) {
   const db = await getDb();
   if (!db) return [];
@@ -576,6 +576,7 @@ export async function getAdminUserTaskErrors(userId: number, limit: number = 50)
     const rows = await db
       .select({
         historyId: tryOnHistory.id,
+        shirtStyle: tryOnHistory.shirtStyle,
         status: tryOnHistory.status,
         createdAt: tryOnHistory.createdAt,
         completedAt: tryOnHistory.completedAt,
@@ -592,7 +593,6 @@ export async function getAdminUserTaskErrors(userId: number, limit: number = 50)
       .leftJoin(comfyBridgeTasks, eq(comfyBridgeTasks.historyId, tryOnHistory.id))
       .where(and(
         eq(tryOnHistory.userId, userId),
-        eq(tryOnHistory.shirtStyle, QWEN_EDIT_STYLE_ID),
         eq(tryOnHistory.status, "failed"),
       ))
       .orderBy(desc(tryOnHistory.id))
@@ -603,7 +603,7 @@ export async function getAdminUserTaskErrors(userId: number, limit: number = 50)
       fullError: lastError ?? getStoredTaskFailureDetail(bubbleApiResponse) ?? "No detailed error was recorded for this task.",
     }));
   } catch (error) {
-    console.error("[Database] Failed to get administrator XXX task errors:", error);
+    console.error("[Database] Failed to get administrator image-generation task errors:", error);
     return [];
   }
 }

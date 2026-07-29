@@ -2,13 +2,22 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { trpc } from "@/lib/trpc";
 import { CircleAlert, FileWarning, GalleryHorizontalEnd, LoaderCircle, LogOut, ShieldCheck, UserRound, Users } from "lucide-react";
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 
 function when(value: Date | string | null | undefined) {
   if (!value) return "Never";
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? "Unknown" : date.toLocaleString();
+}
+
+function taskTypeLabel(shirtStyle: string) {
+  if (shirtStyle === "qwen-image-edit-rapid") return "Qwen Image Edit";
+  return shirtStyle
+    .split(/[-_]+/)
+    .filter(Boolean)
+    .map(part => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`)
+    .join(" ");
 }
 
 function AdminImage({ src, alt }: { src: string | null; alt: string }) {
@@ -65,7 +74,7 @@ export default function AdminPanel() {
             <ShieldCheck className="h-7 w-7 text-accent" />
             <div>
               <p className="text-2xl font-bold neon-pink">ADMIN WORKSPACE</p>
-              <p className="text-xs text-muted-foreground">Restricted user, gallery, and XXX error-log review</p>
+              <p className="text-xs text-muted-foreground">Restricted user, gallery, and image-generation error-log review</p>
             </div>
           </div>
           <Button onClick={() => logout.mutate()} disabled={logout.isPending} className="bg-destructive font-bold text-destructive-foreground">
@@ -100,7 +109,7 @@ export default function AdminPanel() {
 
         <section className="min-w-0 space-y-6">
           {selectedUserId === null ? (
-            <Card className="hud-frame bg-card/50 p-8 text-center text-muted-foreground">Select a user to review their profile, processing gallery, and XXX task errors.</Card>
+            <Card className="hud-frame bg-card/50 p-8 text-center text-muted-foreground">Select a user to review their profile, processing gallery, and complete image-generation task errors.</Card>
           ) : (
             <>
               <Card className="hud-frame bg-card/50 p-6">
@@ -121,11 +130,11 @@ export default function AdminPanel() {
               </Card>
 
               <Card className="hud-frame bg-card/50 p-6">
-                <div className="mb-5 flex items-center gap-2"><FileWarning className="h-5 w-5 text-destructive" /><h2 className="font-bold">FULL XXX TASK ERROR LOGS</h2></div>
+                <div className="mb-5 flex items-center gap-2"><FileWarning className="h-5 w-5 text-destructive" /><h2 className="font-bold">FULL IMAGE-GENERATION ERROR LOGS</h2></div>
                 {taskErrors.isLoading ? (
                   <div className="flex justify-center p-8"><LoaderCircle className="h-6 w-6 animate-spin text-accent" /></div>
                 ) : taskErrors.isError ? (
-                  <p className="flex items-center gap-2 text-sm text-destructive"><CircleAlert className="h-4 w-4" /> Unable to load this user&apos;s XXX task error logs.</p>
+                  <p className="flex items-center gap-2 text-sm text-destructive"><CircleAlert className="h-4 w-4" /> Unable to load this user&apos;s image-generation task error logs.</p>
                 ) : taskErrors.data?.length ? (
                   <div className="space-y-4">
                     {taskErrors.data.map(entry => (
@@ -134,17 +143,19 @@ export default function AdminPanel() {
                           <div><span className="font-bold">History #{entry.historyId}</span>{entry.taskId ? <span className="ml-2 text-muted-foreground">Bridge task #{entry.taskId}</span> : null}</div>
                           <span className="font-bold uppercase text-destructive">{entry.bridgeStatus || entry.status}</span>
                         </div>
-                        <dl className="grid gap-x-5 gap-y-2 border-b border-destructive/20 px-4 py-3 text-xs text-muted-foreground sm:grid-cols-3">
+                        <dl className="grid gap-x-5 gap-y-2 border-b border-destructive/20 px-4 py-3 text-xs text-muted-foreground sm:grid-cols-4">
+                          <div><dt>Task type</dt><dd className="mt-1 break-words text-foreground">{taskTypeLabel(entry.shirtStyle)}</dd></div>
                           <div><dt>Created</dt><dd className="mt-1 text-foreground">{when(entry.createdAt)}</dd></div>
                           <div><dt>Completed</dt><dd className="mt-1 text-foreground">{when(entry.completedAt)}</dd></div>
                           <div><dt>Attempts</dt><dd className="mt-1 text-foreground">{entry.attemptCount ?? 0}</dd></div>
                           {entry.progressLabel ? <div className="sm:col-span-3"><dt>Last progress</dt><dd className="mt-1 break-words text-foreground">{entry.progressLabel}{entry.progressDetail ? ` — ${entry.progressDetail}` : ""}</dd></div> : null}
                         </dl>
-                        <pre className="max-h-96 overflow-auto whitespace-pre-wrap break-words p-4 font-sans text-sm leading-6 text-destructive">{entry.fullError}</pre>
+                        <div className="border-b border-destructive/20 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-destructive">Full raw error</div>
+                        <pre className="whitespace-pre-wrap break-words p-4 font-sans text-sm leading-6 text-destructive">{entry.fullError}</pre>
                       </article>
                     ))}
                   </div>
-                ) : <p className="text-sm text-muted-foreground">No failed XXX task errors are recorded for this user.</p>}
+                ) : <p className="text-sm text-muted-foreground">No failed image-generation task errors are recorded for this user.</p>}
               </Card>
 
               <Card className="hud-frame bg-card/50 p-6">
