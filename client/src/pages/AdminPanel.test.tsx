@@ -20,11 +20,21 @@ vi.mock("@/lib/trpc", () => ({
       listUsers: { useQuery: () => ({ data: [{ id: 7, name: "Oscar", email: "oscar@example.com", lastSignedIn: new Date() }], isLoading: false, isError: false }) },
       userProfile: { useQuery: () => ({ data: { id: 7, name: "Oscar", email: "oscar@example.com", role: "admin", credits: 100, createdAt: new Date(), lastSignedIn: new Date() }, isLoading: false, isError: false }) },
       userGallery: { useQuery: () => ({ data: [], isLoading: false, isError: false }) },
+      userTaskDiagnostics: {
+        useQuery: () => ({
+          data: [
+            { historyId: 499, shirtStyle: "neon-pink", status: "pending", createdAt: new Date(), completedAt: null, taskId: null, bridgeStatus: null, processingRoute: "standard-image-generation", routeDetail: "route=standard-image-generation; shirtStyle=neon-pink" },
+            { historyId: 500, shirtStyle: "qwen-image-edit-rapid", status: "pending", createdAt: new Date(), completedAt: null, taskId: null, bridgeStatus: null, processingRoute: "local-comfyui-qwen", routeDetail: "route=local-comfyui-qwen; shirtStyle=qwen-image-edit-rapid" },
+          ],
+          isLoading: false,
+          isError: false,
+        }),
+      },
       userTaskErrors: {
         useQuery: () => ({
           data: [
-            { historyId: 501, shirtStyle: "classic-white", status: "failed", createdAt: new Date(), completedAt: new Date(), taskId: null, bridgeStatus: null, attemptCount: null, progressKey: null, progressLabel: null, progressDetail: null, fullError: fullTryOnError },
-            { historyId: 502, shirtStyle: "qwen-image-edit-rapid", status: "failed", createdAt: new Date(), completedAt: new Date(), taskId: 88, bridgeStatus: "failed", attemptCount: 2, progressKey: "failed", progressLabel: "Workstation rejected the request", progressDetail: "upstream timeout", fullError: fullQwenError },
+            { historyId: 501, shirtStyle: "classic-white", status: "failed", createdAt: new Date(), completedAt: new Date(), taskId: null, bridgeStatus: null, attemptCount: null, progressKey: null, progressLabel: null, progressDetail: null, processingRoute: "standard-image-generation", routeDetail: "route=standard-image-generation; shirtStyle=classic-white", fullError: fullTryOnError },
+            { historyId: 502, shirtStyle: "qwen-image-edit-rapid", status: "failed", createdAt: new Date(), completedAt: new Date(), taskId: 88, bridgeStatus: "failed", attemptCount: 2, progressKey: "failed", progressLabel: "Workstation rejected the request", progressDetail: "upstream timeout", processingRoute: "local-comfyui-qwen", routeDetail: "route=local-comfyui-qwen; shirtStyle=qwen-image-edit-rapid", fullError: fullQwenError },
           ],
           isLoading: false,
           isError: false,
@@ -51,11 +61,16 @@ describe("Admin Workspace diagnostics", () => {
     render(<AdminPanel />);
 
     await waitFor(() => expect(screen.getByText("FULL IMAGE-GENERATION ERROR LOGS")).toBeTruthy());
+    expect(screen.getByText("RECENT PROCESSING ROUTES")).toBeTruthy();
     expect(screen.queryByText("FULL XXX TASK ERROR LOGS")).toBeNull();
     expect(screen.getByText("Classic White")).toBeTruthy();
-    expect(screen.getByText("Qwen Image Edit")).toBeTruthy();
+    expect(screen.getAllByText("Qwen Image Edit").length).toBeGreaterThan(0);
     expect(screen.getByText(/END-OF-TRY-ON-ERROR/).textContent).toBe(fullTryOnError);
     expect(screen.getByText(/END-OF-QWEN-ERROR/).textContent).toBe(fullQwenError);
     expect(screen.getAllByText("Full raw error")).toHaveLength(2);
+    expect(screen.getAllByText("Standard Cloud Image Generation").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Local ComfyUI (Qwen)").length).toBeGreaterThan(0);
+    expect(screen.getByText("route=standard-image-generation; shirtStyle=neon-pink")).toBeTruthy();
+    expect(screen.getByText("route=local-comfyui-qwen; shirtStyle=qwen-image-edit-rapid")).toBeTruthy();
   });
 });

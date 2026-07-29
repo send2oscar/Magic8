@@ -12,6 +12,7 @@ import {
   getUserPhotos,
   saveTryOnHistory,
   getTryOnHistory,
+  getAdminUserTaskDiagnostics,
   getAdminUserTaskErrors,
   getAdminUserProfile,
   getAdminUsers,
@@ -330,6 +331,7 @@ export const appRouter = router({
     listUsers: passwordAdminProcedure.query(() => getAdminUsers()),
     userProfile: passwordAdminProcedure.input(z.object({ userId: z.number().int().positive() })).query(({ input }) => getAdminUserProfile(input.userId)),
     userGallery: passwordAdminProcedure.input(z.object({ userId: z.number().int().positive() })).query(({ input }) => getUserGallery(input.userId)),
+    userTaskDiagnostics: passwordAdminProcedure.input(z.object({ userId: z.number().int().positive() })).query(({ input }) => getAdminUserTaskDiagnostics(input.userId)),
     userTaskErrors: passwordAdminProcedure.input(z.object({ userId: z.number().int().positive() })).query(({ input }) => getAdminUserTaskErrors(input.userId)),
   }),
 
@@ -547,7 +549,13 @@ export const appRouter = router({
         let creditsDeducted = false;
         let historyId: number | null = null;
         let taskFinalized = false;
-        const taskStages: TryOnTaskStage[] = [];
+        const taskStages: TryOnTaskStage[] = [{
+          key: "route_selected",
+          label: "Standard cloud route selected",
+          state: "completed",
+          detail: `route=standard-image-generation; shirtStyle=${input.shirtStyle}`,
+          timestamp: Date.now(),
+        }];
 
         const persistTaskStages = async () => {
           if (historyId) await updateTryOnTaskStages(historyId, taskStages);
@@ -615,6 +623,13 @@ export const appRouter = router({
               message: "The selected photo was not found in your account. Upload a photo and try again.",
             });
           }
+
+          console.info("[TryOn Route]", {
+            userId: ctx.user.id,
+            photoId: input.photoId,
+            shirtStyle: input.shirtStyle,
+            route: "standard-image-generation",
+          });
 
           taskStages.push({
             key: "photo_verified",

@@ -2,11 +2,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { TrpcContext } from "./_core/context";
 
 const mocks = vi.hoisted(() => ({
-  getUserCredits: vi.fn(), deductCredits: vi.fn(), addCredits: vi.fn(), saveUserPhoto: vi.fn(), getUserPhotos: vi.fn(), saveTryOnHistory: vi.fn(), getTryOnHistory: vi.fn(), updateTryOnHistory: vi.fn(), updateTryOnTaskStages: vi.fn(), getActiveTryOnTask: vi.fn(), getUserGallery: vi.fn(), deleteUserGalleryEntry: vi.fn(), getAdminUsers: vi.fn(), getAdminUserProfile: vi.fn(), getAdminUserTaskErrors: vi.fn(),
+  getUserCredits: vi.fn(), deductCredits: vi.fn(), addCredits: vi.fn(), saveUserPhoto: vi.fn(), getUserPhotos: vi.fn(), saveTryOnHistory: vi.fn(), getTryOnHistory: vi.fn(), updateTryOnHistory: vi.fn(), updateTryOnTaskStages: vi.fn(), getActiveTryOnTask: vi.fn(), getUserGallery: vi.fn(), deleteUserGalleryEntry: vi.fn(), getAdminUsers: vi.fn(), getAdminUserProfile: vi.fn(), getAdminUserTaskDiagnostics: vi.fn(), getAdminUserTaskErrors: vi.fn(),
 }));
 
 vi.mock("./db", () => ({
-  getUserCredits: mocks.getUserCredits, deductCredits: mocks.deductCredits, addCredits: mocks.addCredits, saveUserPhoto: mocks.saveUserPhoto, getUserPhotos: mocks.getUserPhotos, saveTryOnHistory: mocks.saveTryOnHistory, getTryOnHistory: mocks.getTryOnHistory, updateTryOnHistory: mocks.updateTryOnHistory, updateTryOnTaskStages: mocks.updateTryOnTaskStages, getActiveTryOnTask: mocks.getActiveTryOnTask, getUserGallery: mocks.getUserGallery, deleteUserGalleryEntry: mocks.deleteUserGalleryEntry, getAdminUsers: mocks.getAdminUsers, getAdminUserProfile: mocks.getAdminUserProfile, getAdminUserTaskErrors: mocks.getAdminUserTaskErrors,
+  getUserCredits: mocks.getUserCredits, deductCredits: mocks.deductCredits, addCredits: mocks.addCredits, saveUserPhoto: mocks.saveUserPhoto, getUserPhotos: mocks.getUserPhotos, saveTryOnHistory: mocks.saveTryOnHistory, getTryOnHistory: mocks.getTryOnHistory, updateTryOnHistory: mocks.updateTryOnHistory, updateTryOnTaskStages: mocks.updateTryOnTaskStages, getActiveTryOnTask: mocks.getActiveTryOnTask, getUserGallery: mocks.getUserGallery, deleteUserGalleryEntry: mocks.deleteUserGalleryEntry, getAdminUsers: mocks.getAdminUsers, getAdminUserProfile: mocks.getAdminUserProfile, getAdminUserTaskDiagnostics: mocks.getAdminUserTaskDiagnostics, getAdminUserTaskErrors: mocks.getAdminUserTaskErrors,
 }));
 
 import { appRouter } from "./routers";
@@ -52,7 +52,7 @@ describe("private gallery and administrator access", () => {
     expect(mocks.getAdminUsers).not.toHaveBeenCalled();
   });
 
-  it("allows the dedicated administrator session to review a selected user profile, gallery, and full XXX task errors", async () => {
+  it("allows the dedicated administrator session to review a selected user profile, gallery, routes, and full task errors", async () => {
     const loginContext = context(null);
     await appRouter.createCaller(loginContext).admin.login({ username: process.env.ADMIN_USERNAME!, password: process.env.ADMIN_PASSWORD! });
     const [cookieName, token] = (loginContext.res.cookie as ReturnType<typeof vi.fn>).mock.calls[0];
@@ -60,13 +60,17 @@ describe("private gallery and administrator access", () => {
     mocks.getAdminUsers.mockResolvedValue([{ id: 2, name: "User 2" }]);
     mocks.getAdminUserProfile.mockResolvedValue({ id: 2, name: "User 2" });
     mocks.getUserGallery.mockResolvedValue([{ id: 202, userId: 2 }]);
+    const routes = [{ historyId: 204, shirtStyle: "qwen-image-edit-rapid", processingRoute: "local-comfyui-qwen" }];
+    mocks.getAdminUserTaskDiagnostics.mockResolvedValue(routes);
     const fullError = `Bridge error:\n${"full diagnostic ".repeat(80)}END-OF-ERROR`;
     mocks.getAdminUserTaskErrors.mockResolvedValue([{ historyId: 203, shirtStyle: "classic-white", fullError }]);
     await expect(caller.admin.listUsers()).resolves.toEqual([{ id: 2, name: "User 2" }]);
     await expect(caller.admin.userProfile({ userId: 2 })).resolves.toEqual({ id: 2, name: "User 2" });
     await expect(caller.admin.userGallery({ userId: 2 })).resolves.toEqual([{ id: 202, userId: 2 }]);
+    await expect(caller.admin.userTaskDiagnostics({ userId: 2 })).resolves.toEqual(routes);
     await expect(caller.admin.userTaskErrors({ userId: 2 })).resolves.toEqual([{ historyId: 203, shirtStyle: "classic-white", fullError }]);
     expect(mocks.getUserGallery).toHaveBeenLastCalledWith(2);
+    expect(mocks.getAdminUserTaskDiagnostics).toHaveBeenCalledWith(2);
     expect(mocks.getAdminUserTaskErrors).toHaveBeenCalledWith(2);
   });
 });

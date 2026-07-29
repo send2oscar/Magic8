@@ -3,6 +3,7 @@ import { drizzle } from "drizzle-orm/mysql2";
 import { InsertUser, users, userPhotos, InsertUserPhoto, tryOnHistory, InsertTryOnHistory, comfyBridgeTasks } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import { QWEN_EDIT_STYLE_ID, type QwenLoraWeights } from "./comfyuiQwenWorkflow";
+import { getStoredTaskRouteDiagnostic } from "./taskRouteDiagnostics";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -546,6 +547,42 @@ export async function getAdminUserProfile(userId: number) {
   }
 }
 
+/** Return recent all-status task records with the authoritative route persisted at submission time. */
+export async function getAdminUserTaskDiagnostics(userId: number, limit: number = 50) {
+  const db = await getDb();
+  if (!db) return [];
+  try {
+    const rows = await db
+      .select({
+        historyId: tryOnHistory.id,
+        shirtStyle: tryOnHistory.shirtStyle,
+        status: tryOnHistory.status,
+        createdAt: tryOnHistory.createdAt,
+        completedAt: tryOnHistory.completedAt,
+        taskId: comfyBridgeTasks.id,
+        bridgeStatus: comfyBridgeTasks.status,
+        bubbleApiResponse: tryOnHistory.bubbleApiResponse,
+      })
+      .from(tryOnHistory)
+      .leftJoin(comfyBridgeTasks, eq(comfyBridgeTasks.historyId, tryOnHistory.id))
+      .where(eq(tryOnHistory.userId, userId))
+      .orderBy(desc(tryOnHistory.id))
+      .limit(Math.min(Math.max(limit, 1), 100));
+
+    return rows.map(({ bubbleApiResponse, ...task }) => {
+      const routeDiagnostic = getStoredTaskRouteDiagnostic(bubbleApiResponse);
+      return {
+        ...task,
+        processingRoute: routeDiagnostic?.processingRoute ?? null,
+        routeDetail: routeDiagnostic?.detail ?? null,
+      };
+    });
+  } catch (error) {
+    console.error("[Database] Failed to get administrator task route diagnostics:", error);
+    return [];
+  }
+}
+
 function getStoredTaskFailureDetail(serialized: string | null): string | null {
   if (!serialized) return null;
   try {
@@ -598,10 +635,15 @@ export async function getAdminUserTaskErrors(userId: number, limit: number = 50)
       .orderBy(desc(tryOnHistory.id))
       .limit(Math.min(Math.max(limit, 1), 100));
 
-    return rows.map(({ bubbleApiResponse, lastError, ...task }) => ({
-      ...task,
-      fullError: lastError ?? getStoredTaskFailureDetail(bubbleApiResponse) ?? "No detailed error was recorded for this task.",
-    }));
+    return rows.map(({ bubbleApiResponse, lastError, ...task }) => {
+      const routeDiagnostic = getStoredTaskRouteDiagnostic(bubbleApiResponse);
+      return {
+        ...task,
+        processingRoute: routeDiagnostic?.processingRoute ?? null,
+        routeDetail: routeDiagnostic?.detail ?? null,
+        fullError: lastError ?? getStoredTaskFailureDetail(bubbleApiResponse) ?? "No detailed error was recorded for this task.",
+      };
+    });
   } catch (error) {
     console.error("[Database] Failed to get administrator image-generation task errors:", error);
     return [];

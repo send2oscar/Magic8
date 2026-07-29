@@ -151,7 +151,7 @@ describe("Dashboard Try On Now lifecycle", () => {
     const safeMessage = "We couldn't complete the AI try-on this time. Your credit has been returned. Please try again in a moment.";
     await act(async () => { request.reject(new Error(safeMessage)); await Promise.resolve(); });
     const retryButton = screen.getByRole("button", { name: "Try on now" });
-    expect(retryButton.textContent).toContain("TRY ON NOW");
+    expect(retryButton.textContent).toContain("TRY ON NEON PINK");
     expect(retryButton.hasAttribute("disabled")).toBe(false);
     expect(mocks.toastError).toHaveBeenCalledWith(safeMessage);
   });
@@ -177,8 +177,16 @@ describe("Dashboard Try On Now lifecycle", () => {
   it("keeps Positive Prompt visible for every shirt while exposing Qwen controls only for XXX", () => {
     render(<Dashboard />);
     const classicWhiteButton = screen.getByRole("button", { name: "Classic White (1 Credit)" });
-    expect(classicWhiteButton.className).toContain("bg-secondary/20");
+    expect(classicWhiteButton.className).not.toContain("bg-secondary/20");
     const classicPrompt = screen.getByLabelText(/positive prompt/i) as HTMLTextAreaElement;
+    expect(classicPrompt.value).toBe("");
+    expect(classicPrompt.disabled).toBe(true);
+    expect(screen.getByText("NO ROUTE SELECTED")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Try on now" }).hasAttribute("disabled")).toBe(true);
+
+    fireEvent.click(classicWhiteButton);
+    expect(classicWhiteButton.className).toContain("bg-secondary/20");
+    expect(screen.getByText("STANDARD CLOUD IMAGE GENERATION")).toBeTruthy();
     expect(classicPrompt.value).not.toBe("");
     const classicPromptValue = classicPrompt.value;
     expect(screen.queryByText("QwenImageEditRapidv1.0(External).json")).toBeNull();
@@ -194,6 +202,8 @@ describe("Dashboard Try On Now lifecycle", () => {
     fireEvent.click(xxxButton);
 
     expect((screen.getByLabelText(/positive prompt/i) as HTMLTextAreaElement).value).not.toBe("");
+    expect(screen.getByText("LOCAL COMFYUI (QWEN)")).toBeTruthy();
+    expect(screen.getByText("SEND XXX TO LOCAL COMFYUI")).toBeTruthy();
     expect(screen.getByText("QwenImageEditRapidv1.0(External).json")).toBeTruthy();
   });
 
@@ -279,7 +289,8 @@ describe("Dashboard Try On Now lifecycle", () => {
     fireEvent.click(screen.getByRole("button", { name: "OK" }));
 
     await waitFor(() => expect(screen.queryByAltText("Selected upload")).toBeNull());
-    expect(screen.getByRole("button", { name: "Classic White (1 Credit)" }).className).toContain("bg-secondary/20");
+    expect(screen.getByRole("button", { name: "Classic White (1 Credit)" }).className).not.toContain("bg-secondary/20");
+    expect(screen.getByText("NO ROUTE SELECTED")).toBeTruthy();
 
     await act(async () => {
       request.resolve({ resultImageUrl: "https://storage.example.test/generated/stale.png", shirtApplied: "Neon Pink", creditsRemaining: 4 });
@@ -312,8 +323,11 @@ describe("Dashboard Try On Now lifecycle", () => {
       expect(screen.queryByAltText("Selected upload")).toBeNull();
       expect(screen.queryByRole("button", { name: /use another photo/i })).toBeNull();
       expect(screen.getByRole("button", { name: "Try on now" })).toBeTruthy();
-      expect(screen.getByRole("button", { name: "Classic White (1 Credit)" }).className).toContain("bg-secondary/20");
-      expect((screen.getByLabelText(/positive prompt/i) as HTMLTextAreaElement).value).not.toBe("");
+      expect(screen.getByRole("button", { name: "Classic White (1 Credit)" }).className).not.toContain("bg-secondary/20");
+      expect((screen.getByLabelText(/positive prompt/i) as HTMLTextAreaElement).value).toBe("");
+      expect((screen.getByLabelText(/positive prompt/i) as HTMLTextAreaElement).disabled).toBe(true);
+      expect(screen.getByRole("button", { name: "Try on now" }).hasAttribute("disabled")).toBe(true);
+      expect(screen.getByText("NO ROUTE SELECTED")).toBeTruthy();
       expect(document.querySelector<HTMLInputElement>("input[type=file]")?.disabled).toBe(false);
     });
   });
@@ -323,6 +337,7 @@ describe("Dashboard Try On Now lifecycle", () => {
     mocks.startQwenEdit.mockResolvedValue({ taskId: 988, status: "pending", creditsRemaining: 5, shirtApplied: "XXX" });
     render(<Dashboard />);
     await selectOwnedPhotoAndShirt("XXX (10 Credits)");
+    expect(screen.getByText("LOCAL COMFYUI (QWEN)")).toBeTruthy();
     fireEvent.change(screen.getByLabelText(/positive prompt/i), { target: { value: "Remove the subject's clothing." } });
     fireEvent.click(screen.getByRole("button", { name: "Try on now" }));
 

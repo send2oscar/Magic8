@@ -115,6 +115,13 @@ export async function startApprovedQwenTask(
     throw new TRPCError({ code: "NOT_FOUND", message: "The selected photo was not found in your account. Upload a photo and try again." });
   }
 
+  console.info("[TryOn Route]", {
+    userId,
+    photoId,
+    shirtStyle: QWEN_EDIT_STYLE_ID,
+    route: "local-comfyui-qwen",
+  });
+
   const savedHistory = await saveTryOnHistory({
     userId,
     photoId,
@@ -126,6 +133,13 @@ export async function startApprovedQwenTask(
   if (!historyId) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to create the Qwen task." });
 
   let stages: TryOnTaskStage[] = [
+    {
+      key: "route_selected",
+      label: "Local ComfyUI route selected",
+      state: "completed",
+      detail: `route=local-comfyui-qwen; shirtStyle=${QWEN_EDIT_STYLE_ID}`,
+      timestamp: Date.now(),
+    },
     { key: "photo_verified", label: "Photo ownership verified", state: "completed", timestamp: Date.now() },
     { key: "task_created", label: "XXX processing task created", state: "completed", timestamp: Date.now() },
   ];

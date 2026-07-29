@@ -154,7 +154,15 @@ describe("Try-On Flow", () => {
         resultImageUrl: "/manus-storage/generated/result.png",
         shirtApplied: "Neon Pink",
       });
-      expect(mocks.updateTryOnTaskStages).toHaveBeenCalled();
+      expect(mocks.updateTryOnTaskStages).toHaveBeenCalledWith(
+        1,
+        expect.arrayContaining([
+          expect.objectContaining({
+            key: "route_selected",
+            detail: "route=standard-image-generation; shirtStyle=neon-pink",
+          }),
+        ]),
+      );
     });
 
     it("accepts the tuple-shaped MySQL insert result used by the deployed database", async () => {

@@ -216,3 +216,13 @@
 - [x] Run the complete test suite, TypeScript checks, and production build.
 - [x] Confirm the two completed local-ComfyUI tasks remain successful with persisted Gallery result URLs.
 - [x] Save a recovery checkpoint and synchronize the verified repair to GitHub main.
+
+## Post-Release Local ComfyUI Submission Regression
+- [x] Trace the newest stuck submission through the deployed request, task records, and local ComfyUI queue without changing the connection method; the newest requests were recorded as `classic-white`, not Qwen tasks.
+- [x] Reproduce the dashboard routing decision and prove which selected shirt value is submitted when the user expects XXX.
+- [x] Add durable administrator diagnostics that preserve the submitted shirt style and selected processing route for future routing investigations.
+- [x] Apply the smallest confirmed correction and add regression safeguards for the failed submission path.
+- [ ] Run the complete automated suite and verify a controlled prompt reaches and completes in local ComfyUI.
+- [ ] Save a recovery checkpoint and synchronize the verified correction to GitHub main.
+- [x] Expose the persisted `route_selected` stage through the administrator task-diagnostics query for standard and XXX submissions.
+- [x] Render each selected processing route in the Admin Workspace and add regression coverage for full route visibility.

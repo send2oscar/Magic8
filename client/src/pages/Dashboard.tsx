@@ -54,7 +54,7 @@ export default function Dashboard() {
   const { user, logout, isAuthenticated, loading } = useAuth();
   const [, setLocation] = useLocation();
   const [selectedPhoto, setSelectedPhoto] = useState<SelectedPhoto | null>(null);
-  const [selectedShirt, setSelectedShirt] = useState<string | null>("classic-white");
+  const [selectedShirt, setSelectedShirt] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isTryingOn, setIsTryingOn] = useState(false);
   const [tryOnProgress, setTryOnProgress] = useState(0);
@@ -66,13 +66,12 @@ export default function Dashboard() {
   const [localTaskStages, setLocalTaskStages] = useState<LiveTaskStage[]>([]);
   const [tryOnStartedAt, setTryOnStartedAt] = useState<number | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
-  const [positivePrompt, setPositivePrompt] = useState(SHIRT_PROMPTS["classic-white"]);
+  const [positivePrompt, setPositivePrompt] = useState("");
   const [qwenLoraWeights, setQwenLoraWeights] = useState<QwenLoraWeights>(DEFAULT_QWEN_LORA_WEIGHTS);
   const [activeQwenTaskId, setActiveQwenTaskId] = useState<number | null>(null);
   const [backgroundQwenError, setBackgroundQwenError] = useState<string | null>(null);
   const [hasTaskSubmissionStarted, setHasTaskSubmissionStarted] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
-  const hasAppliedDefaultPrompt = useRef(false);
   const notifiedTerminalQwenTaskId = useRef<number | null>(null);
   const submissionEpoch = useRef(0);
 
@@ -81,7 +80,6 @@ export default function Dashboard() {
   const photosQuery = trpc.photos.list.useQuery();
   const shirtsQuery = trpc.shirts.list.useQuery();
   const tryOnMutation = trpc.tryOn.process.useMutation();
-  const defaultPromptQuery = trpc.comfyuiPoc.defaultPrompt.useQuery(undefined, { refetchOnWindowFocus: false });
   const qwenWorkflowQuery = trpc.comfyui.workflowConfig.useQuery(undefined, { refetchOnWindowFocus: false });
   const startQwenEditMutation = trpc.comfyui.startQwenEdit.useMutation();
   const qwenEditStatusQuery = trpc.comfyui.qwenEditStatus.useQuery(
@@ -121,12 +119,6 @@ export default function Dashboard() {
   useEffect(() => () => {
     if (previewObjectUrl.current && typeof URL.revokeObjectURL === "function") URL.revokeObjectURL(previewObjectUrl.current);
   }, []);
-
-  useEffect(() => {
-    if (hasAppliedDefaultPrompt.current || defaultPromptQuery.isLoading || selectedShirt) return;
-    hasAppliedDefaultPrompt.current = true;
-    if (defaultPromptQuery.data?.prompt) setPositivePrompt(defaultPromptQuery.data.prompt);
-  }, [defaultPromptQuery.data?.prompt, defaultPromptQuery.isLoading, selectedShirt]);
 
   useEffect(() => {
     const taskStatus = qwenEditStatusQuery.data;
@@ -192,8 +184,8 @@ export default function Dashboard() {
     setShowResetConfirm(false);
     submissionEpoch.current += 1;
     setSelectedPhoto(null);
-    setSelectedShirt("classic-white");
-    setPositivePrompt(SHIRT_PROMPTS["classic-white"]);
+    setSelectedShirt(null);
+    setPositivePrompt("");
     setHasTaskSubmissionStarted(false);
     setResultData(null);
     setShowResult(false);
@@ -413,6 +405,14 @@ export default function Dashboard() {
   const liveProgressLabel = isBackgroundQwenTask
     ? qwenEditStatusQuery.isFetching ? "Checking XXX background task" : "XXX processing in background"
     : getTryOnProgressLabel(liveProgress);
+  const selectedShirtName = selectedShirt === QWEN_EDIT_STYLE_ID
+    ? "XXX"
+    : shirtsQuery.data?.find(shirt => shirt.id === selectedShirt)?.name ?? null;
+  const processingRouteLabel = selectedShirt === QWEN_EDIT_STYLE_ID
+    ? "LOCAL COMFYUI (QWEN)"
+    : selectedShirt
+      ? "STANDARD CLOUD IMAGE GENERATION"
+      : "NO ROUTE SELECTED";
 
   return (
     <div className="min-h-screen bg-background">
@@ -511,6 +511,8 @@ export default function Dashboard() {
                   {shirtsQuery.data?.map((shirt) => (
                     <button
                       key={shirt.id}
+                      type="button"
+                      aria-pressed={selectedShirt === shirt.id}
                       onClick={() => handleShirtSelection(shirt.id)}
                       className={`p-4 rounded border-2 transition text-center ${
                         selectedShirt === shirt.id
@@ -524,6 +526,8 @@ export default function Dashboard() {
                   ))}
                   <button
                     key={QWEN_EDIT_STYLE_ID}
+                    type="button"
+                    aria-pressed={selectedShirt === QWEN_EDIT_STYLE_ID}
                     onClick={() => handleShirtSelection(QWEN_EDIT_STYLE_ID)}
                     className={`xxx-button-attention p-4 rounded border-2 transition text-center ${
                       selectedShirt === QWEN_EDIT_STYLE_ID
@@ -542,6 +546,7 @@ export default function Dashboard() {
                     id="positive-prompt"
                     value={positivePrompt}
                     onChange={(event) => setPositivePrompt(event.target.value)}
+                    disabled={!selectedShirt || isPhotoSelectionLocked}
                     placeholder="e.g. Change the shirt to yellow; keep the person and background unchanged."
                     className="min-h-24 resize-y border-accent/40 bg-background/50 text-foreground focus-visible:ring-secondary"
                   />
@@ -596,6 +601,10 @@ export default function Dashboard() {
             <Card className="hud-frame bg-card/50 backdrop-blur">
               <div className="space-y-4">
                 <h2 className="text-2xl font-bold neon-pink">TRY ON</h2>
+                <div className="rounded border border-accent/40 bg-background/40 px-4 py-3" role="status" aria-label="Selected processing route">
+                  <p className="text-xs font-bold tracking-[0.18em] text-muted-foreground">PROCESSING ROUTE</p>
+                  <p className="mt-1 text-sm font-bold text-accent">{processingRouteLabel}</p>
+                </div>
                 <Button
                   onClick={shouldOfferAnotherPhoto ? handleUseAnotherPhoto : handleTryOn}
                   disabled={!shouldOfferAnotherPhoto && (!selectedPhoto?.id || !selectedShirt || isUploading || isTryingOn)}
@@ -613,7 +622,15 @@ export default function Dashboard() {
                   <span
                     className="relative z-10"
                   >
-                    {shouldOfferAnotherPhoto ? "USE ANOTHER PHOTO" : (isTryingOn ? `${liveProgressLabel} • ${liveProgress}%` : "TRY ON NOW")}
+                    {shouldOfferAnotherPhoto
+                      ? "USE ANOTHER PHOTO"
+                      : isTryingOn
+                        ? `${liveProgressLabel} • ${liveProgress}%`
+                        : selectedShirt === QWEN_EDIT_STYLE_ID
+                          ? "SEND XXX TO LOCAL COMFYUI"
+                          : selectedShirtName
+                            ? `TRY ON ${selectedShirtName.toUpperCase()}`
+                            : "SELECT A SHIRT STYLE"}
                   </span>
                 </Button>
                 {hasVisibleTask && (

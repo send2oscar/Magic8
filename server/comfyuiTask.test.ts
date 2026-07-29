@@ -91,7 +91,12 @@ describe("durable direct ComfyUI XXX tasks", () => {
     expect(mocks.submitApprovedQwenEdit).toHaveBeenCalledWith("photos/17/input.jpg", prompt, loraWeights);
     expect(mocks.updateTryOnTaskStages).toHaveBeenLastCalledWith(
       801,
-      expect.any(Array),
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: "route_selected",
+          detail: "route=local-comfyui-qwen; shirtStyle=qwen-image-edit-rapid",
+        }),
+      ]),
       expect.objectContaining({ promptId: "direct-prompt-1", positivePrompt: prompt, loraWeights }),
     );
   });
