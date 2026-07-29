@@ -6,6 +6,24 @@ export const QWEN_INPUT_NODE_ID = "78";
 export const QWEN_OUTPUT_NODE_ID = "102";
 export const QWEN_PROMPT_NODE_ID = "119";
 export const APPROVED_QWEN_CHECKPOINT = "Qwen-Rapid-AIO-v11.4.safetensors";
+export const QWEN_WORKFLOW_FILE_NAME = "QwenImageEditRapidv1.0(External).json";
+export const QWEN_LORA_STRENGTH_MIN = 0;
+export const QWEN_LORA_STRENGTH_MAX = 2;
+
+export const APPROVED_QWEN_LORAS = [
+  { id: "lora_1", label: "External BB — primary", filename: "external_bb-v1.220.safetensors", defaultStrength: 0.6 },
+  { id: "lora_2", label: "External VSize Slider", filename: "external_VSizeSlider.safetensors", defaultStrength: 0.3 },
+  { id: "lora_3", label: "External BB — secondary", filename: "external_bb-v1.220.safetensors", defaultStrength: 0.3 },
+] as const;
+
+export type QwenLoraId = (typeof APPROVED_QWEN_LORAS)[number]["id"];
+export type QwenLoraWeights = Record<QwenLoraId, number>;
+
+export const DEFAULT_QWEN_LORA_WEIGHTS: QwenLoraWeights = {
+  lora_1: 0.6,
+  lora_2: 0.3,
+  lora_3: 0.3,
+};
 
 export function isSafeApparelEditPrompt(prompt: string): boolean {
   // Kept as a compatibility export for callers from earlier versions. There
@@ -71,12 +89,15 @@ const APPROVED_QWEN_WORKFLOW: Workflow = {
   "103": {
     inputs: {
       PowerLoraLoaderHeaderWidget: { type: "PowerLoraLoaderHeaderWidget" },
+      lora_1: { on: true, lora: "external_bb-v1.220.safetensors", strength: DEFAULT_QWEN_LORA_WEIGHTS.lora_1 },
+      lora_2: { on: true, lora: "external_VSizeSlider.safetensors", strength: DEFAULT_QWEN_LORA_WEIGHTS.lora_2 },
+      lora_3: { on: true, lora: "external_bb-v1.220.safetensors", strength: DEFAULT_QWEN_LORA_WEIGHTS.lora_3 },
       "➕ Add Lora": "",
       model: ["118", 0],
       clip: ["118", 1],
     },
     class_type: "Power Lora Loader (rgthree)",
-    _meta: { title: "Power LoRA loader without LoRAs" },
+    _meta: { title: "Approved Power LoRA loader" },
   },
   "115": { inputs: { value: 8 }, class_type: "INTConstant", _meta: { title: "Steps" } },
   "117": { inputs: { value: 0 }, class_type: "PrimitiveInt", _meta: { title: "Seed" } },
@@ -108,13 +129,29 @@ const APPROVED_QWEN_WORKFLOW: Workflow = {
   },
 };
 
-export function createApprovedQwenWorkflow(uploadedFilename: string, requestedPrompt = ""): Workflow {
+export function createApprovedQwenWorkflow(
+  uploadedFilename: string,
+  requestedPrompt = "",
+  requestedLoraWeights: Partial<QwenLoraWeights> = {},
+): Workflow {
   if (!uploadedFilename || uploadedFilename.includes("..") || uploadedFilename.includes("/")) {
     throw new Error("ComfyUI returned an invalid uploaded filename.");
+  }
+
+  const loraWeights: QwenLoraWeights = { ...DEFAULT_QWEN_LORA_WEIGHTS, ...requestedLoraWeights };
+  for (const lora of APPROVED_QWEN_LORAS) {
+    const strength = loraWeights[lora.id];
+    if (!Number.isFinite(strength) || strength < QWEN_LORA_STRENGTH_MIN || strength > QWEN_LORA_STRENGTH_MAX) {
+      throw new Error(`The ${lora.label} weight must be between ${QWEN_LORA_STRENGTH_MIN} and ${QWEN_LORA_STRENGTH_MAX}.`);
+    }
   }
 
   const workflow = structuredClone(APPROVED_QWEN_WORKFLOW);
   workflow[QWEN_INPUT_NODE_ID].inputs.image = uploadedFilename;
   workflow[QWEN_PROMPT_NODE_ID].inputs.prompt = requestedPrompt;
+  for (const lora of APPROVED_QWEN_LORAS) {
+    const strength = loraWeights[lora.id];
+    workflow["103"].inputs[lora.id] = { on: strength > 0, lora: lora.filename, strength };
+  }
   return workflow;
 }

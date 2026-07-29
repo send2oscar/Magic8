@@ -77,8 +77,9 @@ describe("durable direct ComfyUI XXX tasks", () => {
 
   it("uses direct ComfyUI, reserves exactly ten credits, and forwards the exact Dashboard prompt", async () => {
     const prompt = "Keep this prompt exactly as typed — no extra safety preface, filtering, or substitution.";
+    const loraWeights = { lora_1: 0.85, lora_2: 0, lora_3: 1.25 };
 
-    await expect(startApprovedQwenTask(17, 7, prompt)).resolves.toMatchObject({
+    await expect(startApprovedQwenTask(17, 7, prompt, loraWeights)).resolves.toMatchObject({
       taskId: 801,
       status: "pending",
       creditsRemaining: 5,
@@ -87,11 +88,11 @@ describe("durable direct ComfyUI XXX tasks", () => {
 
     expect(mocks.deductCredits).toHaveBeenCalledWith(17, 10);
     expect(mocks.checkComfyUiConnection).toHaveBeenCalledTimes(1);
-    expect(mocks.submitApprovedQwenEdit).toHaveBeenCalledWith("photos/17/input.jpg", prompt);
+    expect(mocks.submitApprovedQwenEdit).toHaveBeenCalledWith("photos/17/input.jpg", prompt, loraWeights);
     expect(mocks.updateTryOnTaskStages).toHaveBeenLastCalledWith(
       801,
       expect.any(Array),
-      expect.objectContaining({ promptId: "direct-prompt-1", positivePrompt: prompt }),
+      expect.objectContaining({ promptId: "direct-prompt-1", positivePrompt: prompt, loraWeights }),
     );
   });
 

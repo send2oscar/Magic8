@@ -23,7 +23,13 @@ import {
   getApprovedQwenTaskProgress,
   submitApprovedQwenEdit,
 } from "./comfyui";
-import { QWEN_EDIT_CREDIT_COST, QWEN_EDIT_STYLE_ID, QWEN_EDIT_STYLE_NAME } from "./comfyuiQwenWorkflow";
+import {
+  DEFAULT_QWEN_LORA_WEIGHTS,
+  QWEN_EDIT_CREDIT_COST,
+  QWEN_EDIT_STYLE_ID,
+  QWEN_EDIT_STYLE_NAME,
+  type QwenLoraWeights,
+} from "./comfyuiQwenWorkflow";
 import { storagePut } from "./storage";
 
 function getInsertedHistoryId(result: unknown): number | null {
@@ -91,8 +97,14 @@ async function refundAndFail(
 }
 
 /** Creates a durable direct-ComfyUI Qwen task using the fixed approved workflow. */
-export async function startApprovedQwenTask(userId: number, photoId: number, positivePrompt?: string) {
+export async function startApprovedQwenTask(
+  userId: number,
+  photoId: number,
+  positivePrompt?: string,
+  requestedLoraWeights: Partial<QwenLoraWeights> = {},
+) {
   const prompt = positivePrompt ?? "";
+  const loraWeights: QwenLoraWeights = { ...DEFAULT_QWEN_LORA_WEIGHTS, ...requestedLoraWeights };
   const balance = await getUserCredits(userId);
   if (balance < QWEN_EDIT_CREDIT_COST) {
     throw new TRPCError({ code: "FORBIDDEN", message: `Insufficient credits. You need at least ${QWEN_EDIT_CREDIT_COST} credits to use XXX.` });
@@ -132,13 +144,14 @@ export async function startApprovedQwenTask(userId: number, photoId: number, pos
 
     stages = advanceStage(stages, "source_upload", "Sending the selected photo to Qwen");
     await updateTryOnTaskStages(historyId, stages);
-    const job = await submitApprovedQwenEdit(photo.photoKey, prompt);
+    const job = await submitApprovedQwenEdit(photo.photoKey, prompt, loraWeights);
     const metadata: ComfyUiTaskMetadata = {
       kind: QWEN_EDIT_STYLE_ID,
       promptId: job.promptId,
       uploadedFilename: job.uploadedFilename,
       queuedAt: Date.now(),
       positivePrompt: prompt,
+      loraWeights,
     };
     stages = advanceStage(stages, "qwen_queued", "Qwen edit queued in ComfyUI", "The server will keep checking ComfyUI and save the result in Gallery.");
     await updateTryOnTaskStages(historyId, stages, metadata);

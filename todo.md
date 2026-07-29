@@ -119,4 +119,10 @@
 ## Heartbeat and Gallery Recovery
 - [x] Inspect the scheduled ComfyUI finalizer’s Heartbeat status, recent runs, and error responses after the reported Gallery regression.
 - [x] Trace pending ComfyUI task records through output retrieval and Gallery persistence to identify the failure point.
-- [ ] Deploy the safe ComfyUI output-folder normalization, manually trigger the Heartbeat finalizer, verify the completed outputs enter the Gallery, and save a recovery checkpoint.
+- [x] Deploy the safe ComfyUI output-folder normalization and verify the Heartbeat finalizer writes completed outputs into the Gallery.
+
+## Qwen LoRA Weight Editor
+- [x] Locate and expose the approved Qwen workflow’s LoRA weight setting for the project owner.
+- [x] Add bounded server-side validation and Dashboard controls for editing the LoRA weight without allowing arbitrary workflow changes.
+- [x] Add regression coverage and verify the selected LoRA weight is submitted with the approved workflow.
+- [ ] Save a combined recovery checkpoint containing the verified Gallery and LoRA changes.

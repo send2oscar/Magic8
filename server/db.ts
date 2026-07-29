@@ -2,7 +2,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import { InsertUser, users, userPhotos, InsertUserPhoto, tryOnHistory, InsertTryOnHistory, comfyBridgeTasks } from "../drizzle/schema";
 import { ENV } from './_core/env';
-import { QWEN_EDIT_STYLE_ID } from "./comfyuiQwenWorkflow";
+import { QWEN_EDIT_STYLE_ID, type QwenLoraWeights } from "./comfyuiQwenWorkflow";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -263,6 +263,7 @@ export type ComfyUiTaskMetadata = {
   uploadedFilename: string;
   queuedAt: number;
   positivePrompt?: string;
+  loraWeights?: QwenLoraWeights;
 };
 
 type PersistedTryOnTaskState = {
