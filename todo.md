@@ -132,6 +132,7 @@
 - [x] Reauthorize the GitHub integration with workflow-write permission.
 - [ ] Add a GitHub Actions test workflow and a RELEASE.md that records the verified release sequence.
 - [ ] Fix the GitHub Actions pnpm setup so the required Test check can install dependencies from the package-manager declaration.
+- [ ] Configure non-production administrator credentials for the mocked CI regression tests.
 - [x] Protect main against force-pushes and deletion, requiring pull-request-based releases.
 - [x] Verify the remote main protection policy: pull requests and linear history are required, while force-pushes and branch deletion are disabled.
 - [x] Save a recovery checkpoint for the verified workflow synchronization and protected main merge.
