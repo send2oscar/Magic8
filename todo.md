@@ -191,3 +191,8 @@
 - [x] Apply the smallest safe source-of-truth correction for the editable labels.
 - [x] Verify the new wording appears in the Dashboard.
 - [x] Save a recovery checkpoint for the verified wording-source correction.
+
+## Notification Duration Extension
+- [ ] Extend the notification message display duration from the current short duration to 30 seconds.
+- [ ] Verify the extended duration in the Dashboard preview.
+- [ ] Save a recovery checkpoint for the extended notification duration.
