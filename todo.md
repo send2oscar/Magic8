@@ -196,3 +196,13 @@
 - [x] Extend the notification message display duration from the current short duration to 15 seconds.
 - [x] Verify the extended duration in the Dashboard preview.
 - [x] Save a recovery checkpoint for the extended notification duration.
+
+## Renewed Local ComfyUI Failure Investigation
+- [x] Investigate the newly reported local ComfyUI image-generation failure using current logs, task records, and endpoint diagnostics only; no fix was applied pending explicit authorization.
+
+## Durable Direct-ComfyUI WidgetToString Repair
+- [x] Replace the GUI-only WidgetToString/Image Saver metadata chain with a direct-API-compatible Qwen output path.
+- [x] Add a workflow compatibility guard that rejects GUI-only metadata dependencies before any direct ComfyUI submission.
+- [x] Add regression coverage for the submitted `/prompt` payload and for rejection of the previously failing node chain.
+- [x] Run the complete test suite, type checks, and a local-ComfyUI live verification of the repaired workflow.
+- [ ] Save a recovery checkpoint and synchronize the verified repair to GitHub main.

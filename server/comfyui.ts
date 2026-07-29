@@ -1,7 +1,12 @@
 import axios from "axios";
 import { ENV } from "./_core/env";
 import { storageGetSignedUrl } from "./storage";
-import { createApprovedQwenWorkflow, QWEN_OUTPUT_NODE_ID, type QwenLoraWeights } from "./comfyuiQwenWorkflow";
+import {
+  assertDirectApiCompatibleQwenWorkflow,
+  createApprovedQwenWorkflow,
+  QWEN_OUTPUT_NODE_ID,
+  type QwenLoraWeights,
+} from "./comfyuiQwenWorkflow";
 
 const REQUEST_TIMEOUT_MS = 20_000;
 const MAX_SOURCE_BYTES = 5 * 1024 * 1024;
@@ -181,10 +186,14 @@ export async function submitApprovedQwenEdit(
   loraWeights: Partial<QwenLoraWeights> = {},
 ): Promise<ComfyUiPrompt> {
   const uploadedFilename = await uploadSourceImage(photoKey);
+  const workflow = createApprovedQwenWorkflow(uploadedFilename, positivePrompt, loraWeights);
+  // Keep the direct API boundary guarded even if a future workflow builder is
+  // changed independently of its own validation.
+  assertDirectApiCompatibleQwenWorkflow(workflow);
   const promptResponse = await readJson(await comfyFetch("/prompt", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ prompt: createApprovedQwenWorkflow(uploadedFilename, positivePrompt, loraWeights), client_id: crypto.randomUUID() }),
+    body: JSON.stringify({ prompt: workflow, client_id: crypto.randomUUID() }),
   }));
   const promptId = safeOutputPart(promptResponse.prompt_id, "prompt identifier");
   return { promptId, uploadedFilename };

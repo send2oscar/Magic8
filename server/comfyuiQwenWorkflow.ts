@@ -34,20 +34,30 @@ export function isSafeApparelEditPrompt(prompt: string): boolean {
 
 
 
-type WorkflowNode = {
+export type QwenWorkflowNode = {
   inputs: Record<string, unknown>;
   class_type: string;
   _meta?: { title?: string };
 };
 
-type Workflow = Record<string, WorkflowNode>;
+export type QwenWorkflow = Record<string, QwenWorkflowNode>;
+
+/**
+ * These custom nodes rely on GUI-only `extra_pnginfo.workflow` metadata.
+ * Direct `/prompt` API jobs do not receive that document, so including either
+ * node makes an otherwise accepted workflow fail during execution.
+ */
+export const DIRECT_API_INCOMPATIBLE_QWEN_NODE_TYPES = [
+  "WidgetToString",
+  "Image Saver Metadata",
+] as const;
 
 /**
  * This is a reviewed, server-owned copy of the supplied Qwen workflow. It is
  * deliberately not accepted from the browser: the browser can only select the
  * approved XXX experience and cannot choose a model, LoRA, prompt, or node.
  */
-const APPROVED_QWEN_WORKFLOW: Workflow = {
+const APPROVED_QWEN_WORKFLOW: QwenWorkflow = {
   "8": { inputs: { samples: ["121", 1], vae: ["118", 2] }, class_type: "VAEDecode", _meta: { title: "VAE Decode" } },
   "66": { inputs: { shift: 3, model: ["103", 0] }, class_type: "ModelSamplingAuraFlow", _meta: { title: "ModelSamplingAuraFlow" } },
   "75": { inputs: { strength: 1, pre_cfg: false, model: ["66", 0] }, class_type: "CFGNorm", _meta: { title: "CFGNorm" } },
@@ -70,22 +80,11 @@ const APPROVED_QWEN_WORKFLOW: Workflow = {
   },
   [QWEN_OUTPUT_NODE_ID]: {
     inputs: {
-      filename: "%time_%basemodelname_%seed",
-      path: "qwen_edit/%date",
-      extension: "jpg",
-      lossless_webp: false,
-      quality_jpeg_or_webp: 100,
-      optimize_png: false,
-      embed_workflow: true,
-      save_workflow_as_json: false,
-      counter: 0,
-      time_format: "%Y-%m-%d-%H%M%S",
-      show_preview: true,
+      filename_prefix: "shirt-changer-qwen",
       images: ["8", 0],
-      metadata: ["106", 0],
     },
-    class_type: "Image Saver Simple",
-    _meta: { title: "Website output image" },
+    class_type: "SaveImage",
+    _meta: { title: "Direct-API-compatible output image" },
   },
   "103": {
     inputs: {
@@ -99,40 +98,6 @@ const APPROVED_QWEN_WORKFLOW: Workflow = {
     },
     class_type: "Power Lora Loader (rgthree)",
     _meta: { title: "Approved Power LoRA loader" },
-  },
-  "104": {
-    inputs: {
-      id: 118,
-      widget_name: "ckpt_name",
-      return_all: false,
-      node_title: "",
-      allowed_float_decimals: 2,
-      any_input: ["118", 0],
-    },
-    class_type: "WidgetToString",
-    _meta: { title: "Widget To String" },
-  },
-  "106": {
-    inputs: {
-      modelname: ["104", 0],
-      positive: "unknown",
-      negative: "unknown",
-      width: 512,
-      height: 512,
-      seed_value: ["117", 0],
-      steps: ["115", 0],
-      cfg: 1,
-      sampler_name: "euler",
-      scheduler_name: "beta57",
-      denoise: 1,
-      clip_skip: 0,
-      additional_hashes: "",
-      download_civitai_data: true,
-      easy_remix: true,
-      custom: "",
-    },
-    class_type: "Image Saver Metadata",
-    _meta: { title: "Image Saver Metadata" },
   },
   "115": { inputs: { value: 8 }, class_type: "INTConstant", _meta: { title: "Steps" } },
   "117": { inputs: { value: 0 }, class_type: "PrimitiveInt", _meta: { title: "Seed" } },
@@ -164,11 +129,41 @@ const APPROVED_QWEN_WORKFLOW: Workflow = {
   },
 };
 
+/**
+ * Enforces the contract for workflows submitted through ComfyUI's direct
+ * `/prompt` API. This makes a future imported GUI workflow fail fast with a
+ * clear application error instead of failing later inside a custom node.
+ */
+export function assertDirectApiCompatibleQwenWorkflow(workflow: QwenWorkflow): void {
+  const incompatibleNode = Object.entries(workflow).find(([, node]) =>
+    DIRECT_API_INCOMPATIBLE_QWEN_NODE_TYPES.includes(
+      node.class_type as (typeof DIRECT_API_INCOMPATIBLE_QWEN_NODE_TYPES)[number],
+    ),
+  );
+  if (incompatibleNode) {
+    const [nodeId, node] = incompatibleNode;
+    throw new Error(
+      `The approved Qwen workflow is not compatible with direct ComfyUI submission: node ${nodeId} (${node.class_type}) requires GUI-only workflow metadata.`,
+    );
+  }
+
+  const outputNode = workflow[QWEN_OUTPUT_NODE_ID];
+  if (!outputNode || outputNode.class_type !== "SaveImage") {
+    throw new Error("The approved Qwen workflow must use SaveImage for direct ComfyUI submission.");
+  }
+  if ("metadata" in outputNode.inputs) {
+    throw new Error("The approved Qwen workflow must not attach GUI-only output metadata to a direct ComfyUI submission.");
+  }
+  if (!Array.isArray(outputNode.inputs.images) || outputNode.inputs.images.length !== 2) {
+    throw new Error("The approved Qwen workflow must provide a valid direct-ComfyUI output image connection.");
+  }
+}
+
 export function createApprovedQwenWorkflow(
   uploadedFilename: string,
   requestedPrompt = "",
   requestedLoraWeights: Partial<QwenLoraWeights> = {},
-): Workflow {
+): QwenWorkflow {
   if (!uploadedFilename || uploadedFilename.includes("..") || uploadedFilename.includes("/")) {
     throw new Error("ComfyUI returned an invalid uploaded filename.");
   }
@@ -188,5 +183,6 @@ export function createApprovedQwenWorkflow(
     const strength = loraWeights[lora.id];
     workflow["103"].inputs[lora.id] = { on: strength > 0, lora: lora.filename, strength };
   }
+  assertDirectApiCompatibleQwenWorkflow(workflow);
   return workflow;
 }

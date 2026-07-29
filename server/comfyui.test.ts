@@ -1,8 +1,14 @@
 import axios from "axios";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { checkComfyUiConnection, getApprovedQwenOutput, getApprovedQwenTaskProgress } from "./comfyui";
+import {
+  checkComfyUiConnection,
+  getApprovedQwenOutput,
+  getApprovedQwenTaskProgress,
+  submitApprovedQwenEdit,
+} from "./comfyui";
 import {
   APPROVED_QWEN_CHECKPOINT,
+  assertDirectApiCompatibleQwenWorkflow,
   createApprovedQwenWorkflow,
   DEFAULT_QWEN_LORA_WEIGHTS,
   QWEN_INPUT_NODE_ID,
@@ -12,12 +18,17 @@ import {
 import { ENV } from "./_core/env";
 
 const mocks = vi.hoisted(() => ({ request: vi.fn(), get: vi.fn() }));
+const storageMocks = vi.hoisted(() => ({ storageGetSignedUrl: vi.fn() }));
 
 vi.mock("axios", () => ({
   default: {
     request: mocks.request,
     get: mocks.get,
   },
+}));
+
+vi.mock("./storage", () => ({
+  storageGetSignedUrl: storageMocks.storageGetSignedUrl,
 }));
 
 function axiosResponse(data: unknown, status = 200) {
@@ -87,14 +98,60 @@ describe("direct ComfyUI connection", () => {
     expect(() => createApprovedQwenWorkflow("shirt-changer-input.png", "", { lora_1: 2.01 })).toThrow("must be between 0 and 2");
   });
 
-  it("retains the submitted output metadata chain", () => {
+  it("uses an API-compatible output and excludes GUI-only metadata nodes", () => {
     const workflow = createApprovedQwenWorkflow("shirt-changer-input.png", "Use this exact prompt.");
 
-    expect(workflow[QWEN_OUTPUT_NODE_ID].inputs.metadata).toEqual(["106", 0]);
-    expect(workflow["104"].inputs.id).toBe(118);
-    expect(workflow["104"].inputs.any_input).toEqual(["118", 0]);
-    expect(workflow["106"].inputs.modelname).toEqual(["104", 0]);
-    expect(workflow[QWEN_OUTPUT_NODE_ID].inputs.filename).toBe("%time_%basemodelname_%seed");
+    expect(workflow[QWEN_OUTPUT_NODE_ID]).toEqual({
+      inputs: { filename_prefix: "shirt-changer-qwen", images: ["8", 0] },
+      class_type: "SaveImage",
+      _meta: { title: "Direct-API-compatible output image" },
+    });
+    expect(workflow[QWEN_OUTPUT_NODE_ID].inputs.metadata).toBeUndefined();
+    expect(workflow["104"]).toBeUndefined();
+    expect(workflow["106"]).toBeUndefined();
+  });
+
+  it("rejects a future GUI-only metadata chain before direct ComfyUI submission", () => {
+    const widgetWorkflow = structuredClone(createApprovedQwenWorkflow("shirt-changer-input.png"));
+    widgetWorkflow["104"] = {
+      inputs: { id: 118, widget_name: "ckpt_name", any_input: ["118", 0] },
+      class_type: "WidgetToString",
+    };
+    expect(() => assertDirectApiCompatibleQwenWorkflow(widgetWorkflow)).toThrow("GUI-only workflow metadata");
+
+    const metadataWorkflow = structuredClone(createApprovedQwenWorkflow("shirt-changer-input.png"));
+    metadataWorkflow[QWEN_OUTPUT_NODE_ID].inputs.metadata = ["106", 0];
+    expect(() => assertDirectApiCompatibleQwenWorkflow(metadataWorkflow)).toThrow("GUI-only output metadata");
+  });
+
+  it("submits only the guarded direct-API-compatible workflow payload", async () => {
+    ENV.comfyuiServerUrl = "http://oscarngan.ddns.net:8188";
+    storageMocks.storageGetSignedUrl.mockResolvedValue("https://storage.example.test/source.jpg");
+    mocks.get.mockResolvedValue({
+      status: 200,
+      data: Buffer.from([1, 2, 3]),
+      headers: { "content-type": "image/jpeg" },
+    });
+    mocks.request
+      .mockResolvedValueOnce(axiosResponse({ name: "shirt-changer-input.jpg" }))
+      .mockResolvedValueOnce(axiosResponse({ prompt_id: "direct-api-compatible-prompt" }));
+
+    await expect(submitApprovedQwenEdit("photos/source.jpg", "Apply a plain blue shirt.")).resolves.toEqual({
+      promptId: "direct-api-compatible-prompt",
+      uploadedFilename: "shirt-changer-input.jpg",
+    });
+
+    const promptRequest = mocks.request.mock.calls[1]?.[0];
+    const payload = JSON.parse(promptRequest.data as string);
+    expect(promptRequest).toMatchObject({
+      url: "http://oscarngan.ddns.net:8188/prompt",
+      method: "POST",
+    });
+    expect(payload.extra_data).toBeUndefined();
+    expect(payload.prompt[QWEN_OUTPUT_NODE_ID].class_type).toBe("SaveImage");
+    expect(payload.prompt[QWEN_OUTPUT_NODE_ID].inputs.metadata).toBeUndefined();
+    expect(payload.prompt["104"]).toBeUndefined();
+    expect(payload.prompt["106"]).toBeUndefined();
   });
 
   it("recognizes an explicit direct-ComfyUI execution failure", async () => {
