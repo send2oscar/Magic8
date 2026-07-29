@@ -102,7 +102,7 @@ const APPROVED_QWEN_WORKFLOW: Workflow = {
   },
   "104": {
     inputs: {
-      id: 0,
+      id: 118,
       widget_name: "ckpt_name",
       return_all: false,
       node_title: "",

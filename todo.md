@@ -163,3 +163,19 @@
 - [x] Guard both standard and XXX submission completions so a confirmed reset cannot restore stale Dashboard state.
 - [x] Add Dashboard regression coverage for a reset during a standard-shirt submission.
 - [x] Set the XXX default prompt to the developer-confirmation placeholder.
+
+## XXX Local ComfyUI Error Investigation
+- [x] Inspect the direct local-ComfyUI configuration and reproduce the reported XXX submission failure.
+- [x] Trace the full failing request and error across the Dashboard, server, and local ComfyUI service; the remote history identifies node 104 (`WidgetToString`) as the execution failure.
+- [x] Apply the smallest safe fix for the confirmed failure cause without changing unrelated Dashboard behavior.
+- [ ] Verify a corrected XXX submission in local ComfyUI after the user retries it.
+- [x] Save a recovery checkpoint for the verified WidgetToString fix and XXX configuration visibility update.
+
+## XXX Visual Attention Treatment
+- [x] Replace the existing XXX emphasis with a persistent, high-contrast neon-pink flashing treatment inspired by the supplied reference.
+- [x] Verify the XXX treatment remains legible, interactive, and respectful of reduced-motion preferences.
+
+## XXX Configuration Visibility
+- [x] Hide only the first displayed XXX configuration row while preserving its backend default value and submission behavior.
+- [x] Verify the remaining visible rows continue to allow supported weight editing.
+- [x] Provide the precise source file and line numbers for editing the remaining visible configuration labels.

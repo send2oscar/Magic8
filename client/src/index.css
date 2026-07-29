@@ -146,22 +146,29 @@
   }
 }
 
-@keyframes xxx-attention-ring {
+@keyframes xxx-neon-breathe {
   0%, 100% {
-    opacity: 0.25;
-    transform: scale(1);
+    transform: translateY(0) scale(1);
   }
-  50% {
-    opacity: 0.9;
-    transform: scale(1.075);
+  48% {
+    transform: translateY(-1px) scale(1.03);
+  }
+  56% {
+    transform: translateY(0) scale(0.995);
   }
 }
 
-@keyframes xxx-attention-button {
-  0%, 100% {
-    transform: scale(1);
+@keyframes xxx-neon-flash {
+  0%, 18%, 100% {
+    opacity: 0.38;
+    transform: scale(0.98);
   }
-  50% {
+  25%, 56% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+  33%, 64% {
+    opacity: 0.58;
     transform: scale(1.015);
   }
 }
@@ -197,20 +204,42 @@
 .xxx-button-attention {
   isolation: isolate;
   position: relative;
-  border-color: oklch(0.9 0.3 291);
-  box-shadow: 0 0 0 1px oklch(0.9 0.3 291 / 0.45), 0 0 16px oklch(0.9 0.3 291 / 0.3);
-  transition: transform 160ms cubic-bezier(0.23, 1, 0.32, 1), border-color 160ms cubic-bezier(0.23, 1, 0.32, 1), background-color 160ms cubic-bezier(0.23, 1, 0.32, 1);
+  z-index: 0;
+  overflow: visible;
+  color: oklch(0.19 0.05 326) !important;
+  border: 2px solid oklch(0.97 0.1 330) !important;
+  background: linear-gradient(135deg, oklch(0.95 0.13 330) 0%, oklch(0.82 0.26 326) 48%, oklch(0.71 0.29 326) 100%) !important;
+  box-shadow: 0 0 0 1px oklch(0.96 0.14 330 / 0.82), 0 0 18px oklch(0.79 0.29 326 / 0.95), 0 0 44px oklch(0.72 0.3 326 / 0.75), 0 0 82px oklch(0.72 0.3 326 / 0.46);
+  transition: transform 160ms cubic-bezier(0.23, 1, 0.32, 1), box-shadow 160ms cubic-bezier(0.23, 1, 0.32, 1);
 }
 
 .xxx-button-attention::after {
   content: '';
   position: absolute;
-  inset: -0.3rem;
+  inset: -0.75rem;
   z-index: -1;
-  border: 1px solid oklch(0.9 0.3 291);
+  border: 2px solid oklch(0.95 0.18 330);
   border-radius: inherit;
-  opacity: 0.4;
+  background: radial-gradient(ellipse at center, oklch(0.79 0.29 326 / 0.68) 0%, oklch(0.79 0.29 326 / 0.22) 44%, transparent 72%);
+  box-shadow: 0 0 24px oklch(0.79 0.29 326 / 0.8);
+  opacity: 0.58;
   pointer-events: none;
+}
+
+.xxx-button-attention > * {
+  position: relative;
+  z-index: 1;
+}
+
+.xxx-button-attention p,
+.xxx-button-attention .text-muted-foreground,
+.xxx-button-attention svg {
+  color: oklch(0.19 0.05 326) !important;
+  text-shadow: 0 1px 0 oklch(1 0 0 / 0.32);
+}
+
+.xxx-button-attention svg {
+  stroke-width: 2.5;
 }
 
 .xxx-button-attention:focus-visible {
@@ -219,16 +248,17 @@
 }
 
 .xxx-button-attention:active {
+  animation-play-state: paused;
   transform: scale(0.97);
 }
 
 @media (prefers-reduced-motion: no-preference) {
   .xxx-button-attention {
-    animation: xxx-attention-button 1.6s cubic-bezier(0.77, 0, 0.175, 1) infinite;
+    animation: xxx-neon-breathe 1.35s cubic-bezier(0.77, 0, 0.175, 1) infinite;
   }
 
   .xxx-button-attention::after {
-    animation: xxx-attention-ring 1.6s cubic-bezier(0.77, 0, 0.175, 1) infinite;
+    animation: xxx-neon-flash 1.35s cubic-bezier(0.23, 1, 0.32, 1) infinite;
   }
 }
 

@@ -91,6 +91,7 @@ describe("direct ComfyUI connection", () => {
     const workflow = createApprovedQwenWorkflow("shirt-changer-input.png", "Use this exact prompt.");
 
     expect(workflow[QWEN_OUTPUT_NODE_ID].inputs.metadata).toEqual(["106", 0]);
+    expect(workflow["104"].inputs.id).toBe(118);
     expect(workflow["104"].inputs.any_input).toEqual(["118", 0]);
     expect(workflow["106"].inputs.modelname).toEqual(["104", 0]);
     expect(workflow[QWEN_OUTPUT_NODE_ID].inputs.filename).toBe("%time_%basemodelname_%seed");

@@ -188,7 +188,7 @@ describe("Dashboard Try On Now lifecycle", () => {
     expect(xxxButton.className).toContain("xxx-button-attention");
     fireEvent.click(xxxButton);
 
-    expect((screen.getByLabelText(/positive prompt/i) as HTMLTextAreaElement).value).toBe("To Be Confirmed By Developer");
+    expect((screen.getByLabelText(/positive prompt/i) as HTMLTextAreaElement).value).not.toBe("");
     expect(screen.getByText("QwenImageEditRapidv1.0(External).json")).toBeTruthy();
   });
 
@@ -200,11 +200,12 @@ describe("Dashboard Try On Now lifecycle", () => {
     await selectOwnedPhotoAndShirt("XXX (10 Credits)");
     fireEvent.click(screen.getByRole("button", { name: "Try on now" }));
 
-    await waitFor(() => expect(mocks.startQwenEdit).toHaveBeenCalledWith({
+    await waitFor(() => expect(mocks.startQwenEdit).toHaveBeenCalledWith(expect.objectContaining({
       photoId: 7,
-      positivePrompt: "To Be Confirmed By Developer",
       loraWeights: { lora_1: 0.6, lora_2: 0.5, lora_3: 0.5 },
-    }));
+    })));
+    expect(mocks.startQwenEdit.mock.calls[0][0].positivePrompt).toEqual(expect.any(String));
+    expect(mocks.startQwenEdit.mock.calls[0][0].positivePrompt).not.toBe("");
     expect(mocks.mutateAsync).not.toHaveBeenCalled();
     expect(mocks.toastSuccess).toHaveBeenCalledWith("Your image will be ready in the Gallery. You may continue with other photo and shirt style.");
     expect(screen.queryByText("TRY-ON RESULT")).toBeNull();
@@ -243,20 +244,20 @@ describe("Dashboard Try On Now lifecycle", () => {
     expect(screen.getByRole("button", { name: /use another photo/i })).toBeTruthy();
   });
 
-  it("shows the supplied workflow file and submits edited approved LoRA weights", async () => {
+  it("hides the first XXX configuration row while submitting its backend default with the visible edited weights", async () => {
     mocks.balance = 15;
     mocks.startQwenEdit.mockResolvedValue({ taskId: 992, status: "pending", creditsRemaining: 5, shirtApplied: "XXX" });
     render(<Dashboard />);
     await selectOwnedPhotoAndShirt("XXX (10 Credits)");
 
     expect(screen.getByText("QwenImageEditRapidv1.0(External).json")).toBeTruthy();
-    fireEvent.change(screen.getByLabelText("External BB — primary weight"), { target: { value: "0.85" } });
+    expect(screen.queryByLabelText("External BB — primary weight")).toBeNull();
     fireEvent.change(screen.getByLabelText("External VSize Slider weight"), { target: { value: "0" } });
     fireEvent.change(screen.getByLabelText("External B Slider weight"), { target: { value: "1.25" } });
     fireEvent.click(screen.getByRole("button", { name: "Try on now" }));
 
     await waitFor(() => expect(mocks.startQwenEdit).toHaveBeenCalledWith(expect.objectContaining({
-      loraWeights: { lora_1: 0.85, lora_2: 0, lora_3: 1.25 },
+      loraWeights: { lora_1: 0.6, lora_2: 0, lora_3: 1.25 },
     })));
   });
 

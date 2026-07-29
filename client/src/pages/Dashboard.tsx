@@ -554,7 +554,7 @@ export default function Dashboard() {
                         { id: "lora_1", label: "External BB — primary", filename: "external_bb-v1.220.safetensors", defaultStrength: 0.6},
                         { id: "lora_2", label: "Vagina Fine Tune (The smaller, the tighter)", filename: "external_VSizeSlider.safetensors", defaultStrength: 0.5 },
                         { id: "lora_3", label: "Breast Fine Tune (The smaller value, the smaller breast)", filename: "external_bslider_qwen_v1.safetensors", defaultStrength: 0.5 },
-                      ]).map(lora => (
+                      ]).filter(lora => lora.id !== "lora_1").map(lora => (
                         <label key={lora.id} className="grid gap-1 sm:grid-cols-[minmax(0,1fr)_7rem] sm:items-center">
                           <span className="min-w-0">
                             <span className="block text-sm font-semibold text-foreground">{lora.label}</span>
