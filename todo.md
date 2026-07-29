@@ -114,4 +114,4 @@
 - [x] Diagnose and restore the single refresh-style ButtonFix flow after the user reported the deployed Dashboard reverted to duplicated controls.
 - [x] Commit the restored ButtonFix Dashboard and regression-test changes on main.
 - [x] Push the restored ButtonFix commit to the GitHub main branch.
-- [ ] Save a recovery checkpoint for the restored ButtonFix behavior.
+- [x] Save a recovery checkpoint for the restored ButtonFix behavior.
