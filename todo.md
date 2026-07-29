@@ -125,4 +125,4 @@
 - [x] Locate and expose the approved Qwen workflow’s LoRA weight setting for the project owner.
 - [x] Add bounded server-side validation and Dashboard controls for editing the LoRA weight without allowing arbitrary workflow changes.
 - [x] Add regression coverage and verify the selected LoRA weight is submitted with the approved workflow.
-- [ ] Save a combined recovery checkpoint containing the verified Gallery and LoRA changes.
+- [x] Save a combined recovery checkpoint containing the verified Gallery and LoRA changes.
