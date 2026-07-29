@@ -118,9 +118,16 @@ function safeOutputPart(value: unknown, fieldName: string, allowSlash = false): 
   if (typeof value !== "string" || !value || value.includes("..")) {
     throw new ComfyUiRemoteError(`ComfyUI returned an invalid ${fieldName}.`);
   }
+  // ComfyUI running on Windows can report an otherwise-valid output subfolder
+  // using backslashes. Normalize only the allowed folder field before the same
+  // conservative traversal and character checks used for POSIX-style paths.
+  const normalized = allowSlash ? value.replace(/\\/g, "/") : value;
+  if (normalized.includes("..")) {
+    throw new ComfyUiRemoteError(`ComfyUI returned an invalid ${fieldName}.`);
+  }
   const pattern = allowSlash ? /^[A-Za-z0-9._/-]+$/ : /^[A-Za-z0-9._-]+$/;
-  if (!pattern.test(value)) throw new ComfyUiRemoteError(`ComfyUI returned an invalid ${fieldName}.`);
-  return value;
+  if (!pattern.test(normalized)) throw new ComfyUiRemoteError(`ComfyUI returned an invalid ${fieldName}.`);
+  return normalized;
 }
 
 export type ComfyUiPrompt = { promptId: string; uploadedFilename: string };

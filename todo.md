@@ -115,3 +115,8 @@
 - [x] Commit the restored ButtonFix Dashboard and regression-test changes on main.
 - [x] Push the restored ButtonFix commit to the GitHub main branch.
 - [x] Save a recovery checkpoint for the restored ButtonFix behavior.
+
+## Heartbeat and Gallery Recovery
+- [x] Inspect the scheduled ComfyUI finalizer’s Heartbeat status, recent runs, and error responses after the reported Gallery regression.
+- [x] Trace pending ComfyUI task records through output retrieval and Gallery persistence to identify the failure point.
+- [ ] Deploy the safe ComfyUI output-folder normalization, manually trigger the Heartbeat finalizer, verify the completed outputs enter the Gallery, and save a recovery checkpoint.
