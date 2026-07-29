@@ -226,3 +226,5 @@
 - [ ] Save a recovery checkpoint and synchronize the verified correction to GitHub main.
 - [x] Expose the persisted `route_selected` stage through the administrator task-diagnostics query for standard and XXX submissions.
 - [x] Render each selected processing route in the Admin Workspace and add regression coverage for full route visibility.
+- [x] Synchronize the latest verified routing-safeguard commit to GitHub `main` (no active branch-protection rule was present at push time).
+- [ ] Confirm GitHub `main` contains the synchronized commit and save a fresh post-synchronization recovery checkpoint.
