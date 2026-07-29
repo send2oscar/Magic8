@@ -16,6 +16,10 @@ jobs:
     name: Test
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      ADMIN_USERNAME: ci-admin
+      ADMIN_PASSWORD: ci-only-test-password
+      ADMIN_SESSION_SECRET: ci-only-test-session-secret
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
