@@ -1,7 +1,7 @@
 import { TRPCError } from "@trpc/server";
 import {
-  addCredits,
-  deductCredits,
+  chargeAndCompleteTryOn,
+  getCreditCostForRoute,
   getUserCredits,
   getUserPhotos,
   saveTryOnHistory,
@@ -80,9 +80,13 @@ type DashboardQwenPocInput = {
  */
 export async function processDashboardQwenPoc(input: DashboardQwenPocInput) {
   const prompt = input.positivePrompt?.trim() ?? "";
+  const creditCost = await getCreditCostForRoute("xxx");
+  if (!creditCost) {
+    throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "The administrator credit policy is temporarily unavailable." });
+  }
   const balance = await getUserCredits(input.userId);
-  if (balance < 10) {
-    throw new TRPCError({ code: "FORBIDDEN", message: "Insufficient credits. You need at least 10 credits to use XXX." });
+  if (balance < creditCost) {
+    throw new TRPCError({ code: "FORBIDDEN", message: `Insufficient credits. You need at least ${creditCost} credits to use XXX.` });
   }
 
   const photo = (await getUserPhotos(input.userId)).find((candidate) => candidate.id === input.photoId);
@@ -100,7 +104,7 @@ export async function processDashboardQwenPoc(input: DashboardQwenPocInput) {
   const historyId = getInsertedHistoryId(savedHistory);
   if (!historyId) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to create the XXX gallery record." });
 
-  let creditDeducted = false;
+  let taskFinalized = false;
 
   let stages: TryOnTaskStage[] = [
     { key: "photo_verified", label: "Photo ownership verified", state: "completed", timestamp: Date.now() },
@@ -143,30 +147,23 @@ export async function processDashboardQwenPoc(input: DashboardQwenPocInput) {
     // The output exists safely in managed storage before any account balance is
     // changed. If charging or finalization fails, the history remains failed and
     // the user is not shown a completed gallery result.
-    const deducted = await deductCredits(input.userId, 10);
-    if (!deducted) {
-      const message = "Your result was created, but a credit could not be confirmed, so it was not added to your gallery.";
+    const finalized = await chargeAndCompleteTryOn({
+      userId: input.userId,
+      historyId,
+      creditCost,
+      resultImageUrl: stored.url,
+      resultImageKey: stored.key,
+    });
+    if (finalized !== "charged") {
+      const message = finalized === "insufficient_credits"
+        ? `Your result was created, but ${creditCost} credits are no longer available, so it was not added to your gallery. No credits were deducted.`
+        : "The saved result could not be finalized in your gallery. No credits were deducted.";
       await updateTryOnHistory(historyId, { status: "failed", creditsDeducted: 0 });
       await updateTryOnTaskStages(historyId, failedStages(stages, message));
       updateComfyUiPocLiveStatus(input.taskId, input.userId, { phase: "failed", label: message, estimatedSecondsRemaining: null });
       return { success: false as const, message, diagnostics: result.diagnostics };
     }
-    creditDeducted = true;
-
-    const finalized = await updateTryOnHistory(historyId, {
-      status: "success",
-      resultImageUrl: stored.url,
-      resultImageKey: stored.key,
-      creditsDeducted: 10,
-    });
-    if (!finalized) {
-      await addCredits(input.userId, 10);
-      creditDeducted = false;
-      await updateTryOnHistory(historyId, { status: "failed", creditsDeducted: 0 });
-      await updateTryOnTaskStages(historyId, failedStages(stages, "The saved result could not be finalized in your gallery."));
-      updateComfyUiPocLiveStatus(input.taskId, input.userId, { phase: "failed", label: "The saved result could not be finalized in your gallery.", estimatedSecondsRemaining: null });
-      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "The result could not be finalized, so your credit was not deducted." });
-    }
+    taskFinalized = true;
 
     stages = completedStages(stages, "XXX edit saved to your private gallery");
     await updateTryOnTaskStages(historyId, stages);
@@ -179,7 +176,7 @@ export async function processDashboardQwenPoc(input: DashboardQwenPocInput) {
       success: true as const,
       resultImageUrl: stored.url,
       shirtApplied: QWEN_EDIT_STYLE_NAME,
-      creditsRemaining: balance - 10,
+      creditsRemaining: await getUserCredits(input.userId),
       galleryHistoryId: historyId,
       diagnostics: result.diagnostics,
     };
@@ -189,13 +186,11 @@ export async function processDashboardQwenPoc(input: DashboardQwenPocInput) {
       : error instanceof Error
         ? error.message
         : "The XXX edit could not be completed.";
-    if (creditDeducted) {
-      await addCredits(input.userId, 10);
-      creditDeducted = false;
+    if (!taskFinalized) {
+      await updateTryOnHistory(historyId, { status: "failed", creditsDeducted: 0 });
+      await updateTryOnTaskStages(historyId, failedStages(stages, message));
+      updateComfyUiPocLiveStatus(input.taskId, input.userId, { phase: "failed", label: message, estimatedSecondsRemaining: null });
     }
-    await updateTryOnHistory(historyId, { status: "failed", creditsDeducted: 0 });
-    await updateTryOnTaskStages(historyId, failedStages(stages, message));
-    updateComfyUiPocLiveStatus(input.taskId, input.userId, { phase: "failed", label: message, estimatedSecondsRemaining: null });
     if (error instanceof TRPCError) throw error;
     return { success: false as const, message, diagnostics: error instanceof ComfyUiPocError ? error.diagnostics : [] };
   }

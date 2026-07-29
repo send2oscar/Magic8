@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   refetchCredits: vi.fn(),
   refetchPhotos: vi.fn(),
   setLocation: vi.fn(),
+  creditPolicy: { standardTryOnCredits: 1, xxxTryOnCredits: 10, priceCentsPerTenCredits: 100 },
   defaultPromptData: { prompt: "Change the shirt to yellow." } as { prompt: string } | null,
   qwenStatusData: null as unknown,
   toastError: vi.fn(),
@@ -21,6 +22,7 @@ vi.mock("@/lib/trpc", () => ({
   trpc: {
     credits: {
       getBalance: { useQuery: () => ({ data: { balance: mocks.balance }, refetch: mocks.refetchCredits }) },
+      policy: { useQuery: () => ({ data: mocks.creditPolicy }) },
     },
     photos: {
       list: {
@@ -64,6 +66,10 @@ vi.mock("@/lib/trpc", () => ({
 
 vi.mock("@/_core/hooks/useAuth", () => ({
   useAuth: () => ({ user: { name: "Test User" }, logout: vi.fn(), isAuthenticated: true, loading: false }),
+}));
+
+vi.mock("@/components/CreditPurchasePanel", () => ({
+  CreditPurchasePanel: () => <div data-testid="credit-purchase-panel" />,
 }));
 
 vi.mock("wouter", () => ({ useLocation: () => ["/dashboard", mocks.setLocation] }));
@@ -120,6 +126,7 @@ describe("Dashboard Try On Now lifecycle", () => {
     mocks.refetchCredits.mockReset();
     mocks.refetchPhotos.mockReset();
     mocks.setLocation.mockReset();
+    mocks.creditPolicy = { standardTryOnCredits: 1, xxxTryOnCredits: 10, priceCentsPerTenCredits: 100 };
     mocks.defaultPromptData = { prompt: "Change the shirt to yellow." };
     mocks.qwenStatusData = null;
     mocks.toastError.mockReset();
@@ -154,6 +161,25 @@ describe("Dashboard Try On Now lifecycle", () => {
     expect(retryButton.textContent).toContain("TRY ON NEON PINK");
     expect(retryButton.hasAttribute("disabled")).toBe(false);
     expect(mocks.toastError).toHaveBeenCalledWith(safeMessage);
+  });
+
+  it("renders and enforces the active administrator credit policy instead of fixed shirt costs", async () => {
+    mocks.creditPolicy = { standardTryOnCredits: 3, xxxTryOnCredits: 17, priceCentsPerTenCredits: 150 };
+    mocks.balance = 2;
+    render(<Dashboard />);
+
+    expect(screen.getByText("Classic White (3 Credits)")).toBeTruthy();
+    expect(screen.getByText("XXX (17 Credits)")).toBeTruthy();
+
+    const file = new File(["photo"], "person.jpg", { type: "image/jpeg" });
+    Object.defineProperty(file, "arrayBuffer", { value: async () => new ArrayBuffer(4) });
+    fireEvent.change(document.querySelector<HTMLInputElement>("input[type=file]")!, { target: { files: [file] } });
+    await waitFor(() => expect(screen.getByAltText("Selected upload")).toBeTruthy());
+    fireEvent.click(screen.getByText("Classic White (3 Credits)"));
+    fireEvent.click(screen.getByRole("button", { name: "Try on now" }));
+
+    expect(mocks.toastError).toHaveBeenCalledWith("Insufficient credits. You need at least 3 credits to try on a shirt.");
+    expect(mocks.mutateAsync).not.toHaveBeenCalled();
   });
 
   it("shows completion and restores Try On Now after a successful standard generation", async () => {

@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  addCredits: vi.fn(),
-  deductCredits: vi.fn(),
+  chargeAndCompleteTryOn: vi.fn(),
+  getCreditCostForRoute: vi.fn(),
   getUserCredits: vi.fn(),
   getUserPhotos: vi.fn(),
   saveTryOnHistory: vi.fn(),
@@ -16,8 +16,8 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("./db", () => ({
-  addCredits: mocks.addCredits,
-  deductCredits: mocks.deductCredits,
+  chargeAndCompleteTryOn: mocks.chargeAndCompleteTryOn,
+  getCreditCostForRoute: mocks.getCreditCostForRoute,
   getUserCredits: mocks.getUserCredits,
   getUserPhotos: mocks.getUserPhotos,
   saveTryOnHistory: mocks.saveTryOnHistory,
@@ -51,6 +51,7 @@ const task = {
 describe("Dashboard XXX Qwen POC", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.getCreditCostForRoute.mockResolvedValue(10);
     mocks.getUserCredits.mockResolvedValue(15);
     mocks.getUserPhotos.mockResolvedValue([{ id: task.photoId, photoKey: "uploads/user-8/source.jpg" }]);
     mocks.saveTryOnHistory.mockResolvedValue({ insertId: 71 });
@@ -58,8 +59,7 @@ describe("Dashboard XXX Qwen POC", () => {
     mocks.updateTryOnTaskStages.mockResolvedValue(true);
     mocks.storageGetSignedUrl.mockResolvedValue("https://storage.example/source.jpg");
     mocks.storagePut.mockResolvedValue({ key: "comfyui-results/8/71.png", url: "/manus-storage/comfyui-results/8/71.png" });
-    mocks.deductCredits.mockResolvedValue(true);
-    mocks.addCredits.mockResolvedValue(true);
+    mocks.chargeAndCompleteTryOn.mockResolvedValue("charged");
     mocks.runComfyUIPOC.mockResolvedValue({
       outputBuffer: Buffer.from("edited-image"),
       outputMimeType: "image/png",
@@ -71,14 +71,14 @@ describe("Dashboard XXX Qwen POC", () => {
     })));
   });
 
-  it("persists the completed result before charging one credit and returns the gallery URL", async () => {
+  it("stores the completed result and charges only when the gallery result is finalized", async () => {
     const result = await processDashboardQwenPoc(task);
 
     expect(result).toMatchObject({
       success: true,
       resultImageUrl: "/manus-storage/comfyui-results/8/71.png",
       galleryHistoryId: 71,
-      creditsRemaining: 5,
+      creditsRemaining: 15,
     });
     expect(mocks.runComfyUIPOC).toHaveBeenCalledWith(
       Buffer.from("source-image"),
@@ -91,11 +91,12 @@ describe("Dashboard XXX Qwen POC", () => {
       Buffer.from("edited-image"),
       "image/png",
     );
-    expect(mocks.storagePut.mock.invocationCallOrder[0]).toBeLessThan(mocks.deductCredits.mock.invocationCallOrder[0]);
-    expect(mocks.updateTryOnHistory).toHaveBeenCalledWith(71, expect.objectContaining({
-      status: "success",
+    expect(mocks.storagePut.mock.invocationCallOrder[0]).toBeLessThan(mocks.chargeAndCompleteTryOn.mock.invocationCallOrder[0]);
+    expect(mocks.chargeAndCompleteTryOn).toHaveBeenCalledWith(expect.objectContaining({
+      userId: task.userId,
+      historyId: 71,
+      creditCost: 10,
       resultImageUrl: "/manus-storage/comfyui-results/8/71.png",
-      creditsDeducted: 10,
     }));
   });
 
@@ -116,14 +117,13 @@ describe("Dashboard XXX Qwen POC", () => {
 
     await expect(processDashboardQwenPoc(task)).resolves.toMatchObject({ success: false, message: "ComfyUI unavailable" });
     expect(mocks.storagePut).not.toHaveBeenCalled();
-    expect(mocks.deductCredits).not.toHaveBeenCalled();
+    expect(mocks.chargeAndCompleteTryOn).not.toHaveBeenCalled();
   });
 
-  it("refunds the credit when the stored result cannot be finalized in the gallery", async () => {
-    mocks.updateTryOnHistory.mockResolvedValueOnce(false).mockResolvedValue(true);
+  it("does not debit when the stored result cannot be finalized in the gallery", async () => {
+    mocks.chargeAndCompleteTryOn.mockResolvedValue("insufficient_credits");
 
-    await expect(processDashboardQwenPoc(task)).rejects.toMatchObject({ code: "INTERNAL_SERVER_ERROR" });
-    expect(mocks.deductCredits).toHaveBeenCalledWith(task.userId, 10);
-    expect(mocks.addCredits).toHaveBeenCalledWith(task.userId, 10);
+    await expect(processDashboardQwenPoc(task)).resolves.toMatchObject({ success: false });
+    expect(mocks.chargeAndCompleteTryOn).toHaveBeenCalledWith(expect.objectContaining({ creditCost: 10 }));
   });
 });

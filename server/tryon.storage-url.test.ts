@@ -3,6 +3,8 @@ import type { TrpcContext } from "./_core/context";
 
 const mocks = vi.hoisted(() => ({
   getUserCredits: vi.fn(),
+  getCreditCostForRoute: vi.fn(),
+  chargeAndCompleteTryOn: vi.fn(),
   deductCredits: vi.fn(),
   addCredits: vi.fn(),
   saveUserPhoto: vi.fn(),
@@ -23,6 +25,8 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("./db", () => ({
   getUserCredits: mocks.getUserCredits,
+  getCreditCostForRoute: mocks.getCreditCostForRoute,
+  chargeAndCompleteTryOn: mocks.chargeAndCompleteTryOn,
   deductCredits: mocks.deductCredits,
   addCredits: mocks.addCredits,
   saveUserPhoto: mocks.saveUserPhoto,
@@ -76,7 +80,9 @@ describe("tryOn.process source image resolution", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.getUserCredits.mockResolvedValue(10);
+    mocks.getUserCredits.mockResolvedValueOnce(10).mockResolvedValue(9);
+    mocks.getCreditCostForRoute.mockResolvedValue(1);
+    mocks.chargeAndCompleteTryOn.mockResolvedValue("charged");
     mocks.deductCredits.mockResolvedValue(true);
     mocks.addCredits.mockResolvedValue(true);
     mocks.saveTryOnHistory.mockResolvedValue({ insertId: 1 });

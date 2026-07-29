@@ -3,8 +3,21 @@ import type { TrpcContext } from "./_core/context";
 
 const mocks = vi.hoisted(() => ({
   getUserCredits: vi.fn(),
-  deductCredits: vi.fn(),
-  addCredits: vi.fn(),
+  chargeAndCompleteTryOn: vi.fn(),
+  getCreditCostForRoute: vi.fn(),
+  getActiveCreditPackages: vi.fn(),
+  getCreditPackageById: vi.fn(),
+  getCreditPolicy: vi.fn(),
+  createPaypalPaymentRecord: vi.fn(),
+  getPaypalPaymentForUser: vi.fn(),
+  fulfillPaypalPayment: vi.fn(),
+  markPaypalPaymentStatus: vi.fn(),
+  getAdminCreditPackages: vi.fn(),
+  getAdminPaypalPayments: vi.fn(),
+  saveAdminCreditPackage: vi.fn(),
+  updateCreditPolicy: vi.fn(),
+  createSandboxPaypalOrder: vi.fn(),
+  captureSandboxPaypalOrder: vi.fn(),
   saveUserPhoto: vi.fn(),
   getUserPhotos: vi.fn(),
   saveTryOnHistory: vi.fn(),
@@ -23,8 +36,19 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("./db", () => ({
   getUserCredits: mocks.getUserCredits,
-  deductCredits: mocks.deductCredits,
-  addCredits: mocks.addCredits,
+  chargeAndCompleteTryOn: mocks.chargeAndCompleteTryOn,
+  getCreditCostForRoute: mocks.getCreditCostForRoute,
+  getActiveCreditPackages: mocks.getActiveCreditPackages,
+  getCreditPackageById: mocks.getCreditPackageById,
+  getCreditPolicy: mocks.getCreditPolicy,
+  createPaypalPaymentRecord: mocks.createPaypalPaymentRecord,
+  getPaypalPaymentForUser: mocks.getPaypalPaymentForUser,
+  fulfillPaypalPayment: mocks.fulfillPaypalPayment,
+  markPaypalPaymentStatus: mocks.markPaypalPaymentStatus,
+  getAdminCreditPackages: mocks.getAdminCreditPackages,
+  getAdminPaypalPayments: mocks.getAdminPaypalPayments,
+  saveAdminCreditPackage: mocks.saveAdminCreditPackage,
+  updateCreditPolicy: mocks.updateCreditPolicy,
   saveUserPhoto: mocks.saveUserPhoto,
   getUserPhotos: mocks.getUserPhotos,
   saveTryOnHistory: mocks.saveTryOnHistory,
@@ -50,6 +74,12 @@ vi.mock("./tryOnSource", () => ({
   createTryOnSourceUrl: mocks.createTryOnSourceUrl,
 }));
 
+vi.mock("./paypal", () => ({
+  PayPalRequestError: class PayPalRequestError extends Error {},
+  createSandboxPaypalOrder: mocks.createSandboxPaypalOrder,
+  captureSandboxPaypalOrder: mocks.captureSandboxPaypalOrder,
+}));
+
 import { appRouter } from "./routers";
 
 type AuthenticatedUser = NonNullable<TrpcContext["user"]>;
@@ -69,15 +99,15 @@ function createAuthContext(userId = 1): TrpcContext {
 
   return {
     user,
-    req: { protocol: "https", headers: {} } as TrpcContext["req"],
+    req: { protocol: "https", headers: { origin: "https://app.example.test", host: "app.example.test" } } as TrpcContext["req"],
     res: { clearCookie: () => {} } as TrpcContext["res"],
   };
 }
 
 function configureSuccessfulTryOn() {
   mocks.getUserCredits.mockResolvedValue(5);
-  mocks.deductCredits.mockResolvedValue(true);
-  mocks.addCredits.mockResolvedValue(true);
+  mocks.getCreditCostForRoute.mockResolvedValue(1);
+  mocks.chargeAndCompleteTryOn.mockResolvedValue("charged");
   mocks.saveTryOnHistory.mockResolvedValue({ insertId: 1 });
   mocks.updateTryOnTaskStages.mockResolvedValue(true);
   mocks.getUserPhotos.mockResolvedValue([
@@ -139,7 +169,7 @@ describe("Try-On Flow", () => {
       ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
     });
 
-    it("deducts one credit and returns a generated result for an owned photo", async () => {
+    it("charges one credit only after a generated result is successfully finalized", async () => {
       const caller = appRouter.createCaller(createAuthContext());
 
       const result = await caller.tryOn.process({
@@ -147,10 +177,15 @@ describe("Try-On Flow", () => {
         shirtStyle: "neon-pink",
       });
 
-      expect(mocks.deductCredits).toHaveBeenCalledWith(1, 1);
+      expect(mocks.chargeAndCompleteTryOn).toHaveBeenCalledWith(expect.objectContaining({
+        userId: 1,
+        historyId: 1,
+        creditCost: 1,
+        resultImageUrl: "/manus-storage/generated/result.png",
+      }));
       expect(result).toMatchObject({
         success: true,
-        creditsRemaining: 4,
+        creditsRemaining: 5,
         resultImageUrl: "/manus-storage/generated/result.png",
         shirtApplied: "Neon Pink",
       });
@@ -172,7 +207,7 @@ describe("Try-On Flow", () => {
       await expect(caller.tryOn.process({
         photoId: 1,
         shirtStyle: "neon-pink",
-      })).resolves.toMatchObject({ success: true, creditsRemaining: 4 });
+      })).resolves.toMatchObject({ success: true, creditsRemaining: 5 });
 
       expect(mocks.updateTryOnTaskStages).toHaveBeenCalledWith(
         41,
@@ -190,10 +225,10 @@ describe("Try-On Flow", () => {
           shirtStyle: "dark-black",
         }),
       ).rejects.toMatchObject({ code: "FORBIDDEN" });
-      expect(mocks.deductCredits).not.toHaveBeenCalled();
+      expect(mocks.chargeAndCompleteTryOn).not.toHaveBeenCalled();
     });
 
-    it("refunds the deducted credit when image generation fails", async () => {
+    it("does not charge or refund credits when image generation fails", async () => {
       mocks.generateImage.mockRejectedValue(new Error("Image provider unavailable"));
       const caller = appRouter.createCaller(createAuthContext());
 
@@ -203,10 +238,10 @@ describe("Try-On Flow", () => {
           shirtStyle: "electric-cyan",
         }),
       ).rejects.toThrow("We couldn't complete the AI try-on this time");
-      expect(mocks.addCredits).toHaveBeenCalledWith(1, 1);
+      expect(mocks.chargeAndCompleteTryOn).not.toHaveBeenCalled();
     });
 
-    it("rejects an unowned photo before creating history or deducting a credit", async () => {
+    it("rejects an unowned photo before creating history or charging a credit", async () => {
       mocks.getUserPhotos.mockResolvedValue([]);
       const caller = appRouter.createCaller(createAuthContext());
 
@@ -218,7 +253,7 @@ describe("Try-On Flow", () => {
       ).rejects.toMatchObject({ code: "NOT_FOUND" });
 
       expect(mocks.saveTryOnHistory).not.toHaveBeenCalled();
-      expect(mocks.deductCredits).not.toHaveBeenCalled();
+      expect(mocks.chargeAndCompleteTryOn).not.toHaveBeenCalled();
       expect(mocks.generateImage).not.toHaveBeenCalled();
     });
   });
@@ -251,6 +286,81 @@ describe("Try-On Flow", () => {
         id: 1,
         photoUrl: "/manus-storage/photos/1/source.jpg",
       });
+    });
+  });
+
+  describe("PayPal credit checkout", () => {
+    it("requires authentication before exposing purchasable credit packages", async () => {
+      const caller = appRouter.createCaller({
+        user: null,
+        req: { protocol: "https", headers: { origin: "https://app.example.test" } } as TrpcContext["req"],
+        res: { clearCookie: () => {} } as TrpcContext["res"],
+      });
+
+      await expect(caller.payments.packages()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+    });
+
+    it("creates an order and payment record with the server-calculated package amount", async () => {
+      mocks.getCreditPackageById.mockResolvedValue({ id: 4, credits: 100, status: "active", sortOrder: 0 });
+      mocks.getCreditPolicy.mockResolvedValue({ id: 1, standardTryOnCredits: 1, xxxTryOnCredits: 10, priceCentsPerTenCredits: 100 });
+      mocks.createSandboxPaypalOrder.mockResolvedValue({ orderId: "ORDER-12345678", approvalUrl: "https://sandbox.paypal.example/checkout?token=ORDER-12345678" });
+      mocks.createPaypalPaymentRecord.mockResolvedValue({ id: 8, orderId: "ORDER-12345678", status: "created" });
+
+      const result = await appRouter.createCaller(createAuthContext(7)).payments.createPaypalOrder({ packageId: 4 });
+
+      expect(mocks.createSandboxPaypalOrder).toHaveBeenCalledWith(expect.objectContaining({
+        amountCents: 1000,
+        description: "100 application credits",
+        userId: 7,
+        packageId: 4,
+        returnUrl: "https://app.example.test/dashboard?paypal=return",
+        cancelUrl: "https://app.example.test/dashboard?paypal=cancel",
+      }));
+      expect(mocks.createPaypalPaymentRecord).toHaveBeenCalledWith({
+        userId: 7,
+        packageId: 4,
+        orderId: "ORDER-12345678",
+        creditAmount: 100,
+        expectedAmountCents: 1000,
+      });
+      expect(result).toMatchObject({ orderId: "ORDER-12345678", creditAmount: 100, amountCents: 1000, amountUsd: "10.00" });
+    });
+
+    it("rejects a checkout request whose Origin does not match the application host", async () => {
+      const context = createAuthContext(7);
+      context.req = {
+        protocol: "https",
+        headers: { origin: "https://untrusted.example.test", host: "app.example.test" },
+      } as TrpcContext["req"];
+
+      await expect(appRouter.createCaller(context).payments.createPaypalOrder({ packageId: 4 })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+      expect(mocks.createSandboxPaypalOrder).not.toHaveBeenCalled();
+    });
+
+    it("captures a user-owned payment once and returns an idempotent result on the repeated return-page request", async () => {
+      mocks.getPaypalPaymentForUser
+        .mockResolvedValueOnce({ orderId: "ORDER-12345678", status: "created", creditAmount: 100 })
+        .mockResolvedValueOnce({ orderId: "ORDER-12345678", status: "completed", creditAmount: 100 });
+      mocks.captureSandboxPaypalOrder.mockResolvedValue({ captureId: "CAPTURE-12345678", capturedAmountCents: 1000 });
+      mocks.fulfillPaypalPayment.mockResolvedValue({ status: "completed", creditAmount: 100 });
+      const caller = appRouter.createCaller(createAuthContext(7));
+
+      await expect(caller.payments.capturePaypalOrder({ orderId: "ORDER-12345678" })).resolves.toEqual({ status: "completed", creditAmount: 100 });
+      await expect(caller.payments.capturePaypalOrder({ orderId: "ORDER-12345678" })).resolves.toEqual({ status: "already_completed", creditAmount: 100 });
+
+      expect(mocks.captureSandboxPaypalOrder).toHaveBeenCalledTimes(1);
+      expect(mocks.fulfillPaypalPayment).toHaveBeenCalledTimes(1);
+      expect(mocks.fulfillPaypalPayment).toHaveBeenCalledWith({
+        userId: 7,
+        orderId: "ORDER-12345678",
+        captureId: "CAPTURE-12345678",
+        capturedAmountCents: 1000,
+      });
+    });
+
+    it("does not expose PayPal payment records to a normal signed-in user", async () => {
+      await expect(appRouter.createCaller(createAuthContext(7)).admin.paypalPayments()).rejects.toMatchObject({ code: "FORBIDDEN" });
+      expect(mocks.getAdminPaypalPayments).not.toHaveBeenCalled();
     });
   });
 });

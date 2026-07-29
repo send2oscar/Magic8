@@ -2,8 +2,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   addCredits: vi.fn(),
-  deductCredits: vi.fn(),
+  chargeAndCompleteTryOn: vi.fn(),
   failPendingTryOnTask: vi.fn(),
+  getCreditCostForRoute: vi.fn(),
   getComfyUiTaskMetadata: vi.fn(),
   getUserCredits: vi.fn(),
   getUserPhotos: vi.fn(),
@@ -21,8 +22,9 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("./db", () => ({
   addCredits: mocks.addCredits,
-  deductCredits: mocks.deductCredits,
+  chargeAndCompleteTryOn: mocks.chargeAndCompleteTryOn,
   failPendingTryOnTask: mocks.failPendingTryOnTask,
+  getCreditCostForRoute: mocks.getCreditCostForRoute,
   getComfyUiTaskMetadata: mocks.getComfyUiTaskMetadata,
   getUserCredits: mocks.getUserCredits,
   getUserPhotos: mocks.getUserPhotos,
@@ -58,6 +60,7 @@ describe("durable direct ComfyUI XXX tasks", () => {
     promptId: "direct-prompt-1",
     uploadedFilename: "shirt-changer-source.jpg",
     queuedAt: Date.now(),
+    creditCost: 10,
   };
 
   beforeEach(() => {
@@ -65,7 +68,8 @@ describe("durable direct ComfyUI XXX tasks", () => {
     mocks.getUserCredits.mockResolvedValue(15);
     mocks.getUserPhotos.mockResolvedValue([{ id: 7, photoKey: "photos/17/input.jpg" }]);
     mocks.saveTryOnHistory.mockResolvedValue({ insertId: 801 });
-    mocks.deductCredits.mockResolvedValue(true);
+    mocks.chargeAndCompleteTryOn.mockResolvedValue("charged");
+    mocks.getCreditCostForRoute.mockResolvedValue(10);
     mocks.addCredits.mockResolvedValue(true);
     mocks.failPendingTryOnTask.mockResolvedValue(true);
     mocks.updateTryOnHistory.mockResolvedValue(true);
@@ -75,18 +79,18 @@ describe("durable direct ComfyUI XXX tasks", () => {
     mocks.getApprovedQwenTaskProgress.mockResolvedValue({ phase: "unavailable", queueRemaining: null, estimatedSecondsRemaining: null });
   });
 
-  it("uses direct ComfyUI, reserves exactly ten credits, and forwards the exact Dashboard prompt", async () => {
+  it("uses direct ComfyUI without charging upfront and forwards the exact Dashboard prompt", async () => {
     const prompt = "Keep this prompt exactly as typed — no extra safety preface, filtering, or substitution.";
     const loraWeights = { lora_1: 0.85, lora_2: 0, lora_3: 1.25 };
 
     await expect(startApprovedQwenTask(17, 7, prompt, loraWeights)).resolves.toMatchObject({
       taskId: 801,
       status: "pending",
-      creditsRemaining: 5,
+      creditsRemaining: 15,
       shirtApplied: "XXX",
     });
 
-    expect(mocks.deductCredits).toHaveBeenCalledWith(17, 10);
+    expect(mocks.chargeAndCompleteTryOn).not.toHaveBeenCalled();
     expect(mocks.checkComfyUiConnection).toHaveBeenCalledTimes(1);
     expect(mocks.submitApprovedQwenEdit).toHaveBeenCalledWith("photos/17/input.jpg", prompt, loraWeights);
     expect(mocks.updateTryOnTaskStages).toHaveBeenLastCalledWith(
@@ -97,11 +101,11 @@ describe("durable direct ComfyUI XXX tasks", () => {
           detail: "route=local-comfyui-qwen; shirtStyle=qwen-image-edit-rapid",
         }),
       ]),
-      expect.objectContaining({ promptId: "direct-prompt-1", positivePrompt: prompt, loraWeights }),
+      expect.objectContaining({ promptId: "direct-prompt-1", positivePrompt: prompt, loraWeights, creditCost: 10 }),
     );
   });
 
-  it("stores a direct ComfyUI result in Gallery without Bridge and keeps the ten-credit charge", async () => {
+  it("stores a direct ComfyUI result in Gallery and charges exactly once after successful completion", async () => {
     mocks.getUserTryOnTask.mockResolvedValue({ shirtStyle: "qwen-image-edit-rapid", status: "pending", bubbleApiResponse: "{}" });
     mocks.getComfyUiTaskMetadata.mockReturnValue(taskMetadata);
     mocks.getApprovedQwenOutput.mockResolvedValue({ filename: "result.png", subfolder: "", type: "output" });
@@ -114,7 +118,12 @@ describe("durable direct ComfyUI XXX tasks", () => {
     });
 
     expect(mocks.storagePut).toHaveBeenCalledWith("comfyui-results/17/801.png", Buffer.from("generated"), "image/png");
-    expect(mocks.updateTryOnHistory).toHaveBeenCalledWith(801, expect.objectContaining({ status: "success", creditsDeducted: 10 }));
+    expect(mocks.chargeAndCompleteTryOn).toHaveBeenCalledWith(expect.objectContaining({
+      userId: 17,
+      historyId: 801,
+      creditCost: 10,
+      resultImageUrl: "https://storage.example/result.png",
+    }));
     expect(mocks.addCredits).not.toHaveBeenCalled();
   });
 
@@ -149,17 +158,18 @@ describe("durable direct ComfyUI XXX tasks", () => {
     expect(mocks.failPendingTryOnTask).not.toHaveBeenCalled();
   });
 
-  it("refunds once for a terminal direct-ComfyUI workflow error", async () => {
+  it("does not debit or refund for a terminal direct-ComfyUI workflow error", async () => {
     mocks.getUserTryOnTask.mockResolvedValue({ shirtStyle: "qwen-image-edit-rapid", status: "pending", bubbleApiResponse: "{}" });
     mocks.getComfyUiTaskMetadata.mockReturnValue(taskMetadata);
     mocks.getApprovedQwenOutput.mockRejectedValue(new ComfyUiTaskExecutionError("ComfyUI workflow failed"));
 
     await expect(refreshApprovedQwenTask(17, 801)).resolves.toMatchObject({ status: "failed" });
     expect(mocks.failPendingTryOnTask).toHaveBeenCalledTimes(1);
-    expect(mocks.addCredits).toHaveBeenCalledWith(17, 10);
+    expect(mocks.chargeAndCompleteTryOn).not.toHaveBeenCalled();
+    expect(mocks.addCredits).not.toHaveBeenCalled();
   });
 
-  it("returns the full direct-ComfyUI submission failure and refunds exactly ten credits", async () => {
+  it("returns the full direct-ComfyUI submission failure without charging credits", async () => {
     const fullError = `ComfyUI request failed:\n${"direct diagnostic detail ".repeat(500)}END-OF-FULL-ERROR`;
     mocks.submitApprovedQwenEdit.mockRejectedValue(new Error(fullError));
 
@@ -167,7 +177,7 @@ describe("durable direct ComfyUI XXX tasks", () => {
       message: expect.stringContaining("END-OF-FULL-ERROR"),
     });
 
-    expect(mocks.addCredits).toHaveBeenCalledWith(17, 10);
+    expect(mocks.addCredits).not.toHaveBeenCalled();
     expect(mocks.failPendingTryOnTask).toHaveBeenCalledWith(801, expect.any(Array), undefined);
   });
 });

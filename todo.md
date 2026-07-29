@@ -228,3 +228,18 @@
 - [x] Render each selected processing route in the Admin Workspace and add regression coverage for full route visibility.
 - [x] Synchronize the latest verified routing-safeguard commit to GitHub `main` (no active branch-protection rule was present at push time).
 - [x] Confirm GitHub `main` contains the synchronized commit and save a fresh post-synchronization recovery checkpoint.
+
+## PayPal Payment Gateway
+- [x] Create the `PayPalPaymentGateway` feature branch from the verified GitHub `main` baseline.
+- [x] Add a minimal payment ledger and singleton credit-policy data model with a schema migration.
+- [x] Implement secure PayPal order creation, server-side return-page capture validation, and idempotent credit fulfillment.
+- [x] Add a user-facing PayPal credit-purchase flow that reflects the current administrator-configured USD price.
+- [x] Add administrator tables for PayPal payment records and configurable XXX deduction, non-XXX deduction, and USD credit pricing.
+- [x] Replace fixed credit costs across standard and XXX flows with the stored administrator credit policy.
+- [x] Deduct credits only after a result is successfully completed and saved; failed or incomplete generation attempts must not consume credits.
+- [x] Add backend and frontend regression coverage for payments, policies, authorization, idempotency, and dynamic deductions.
+- [ ] Validate the feature, save a checkpoint, and push the completed feature branch to GitHub.
+- [x] Seed the administrator credit policy with standard = 1 credit, XXX = 10 credits, and USD 1.00 per 10 credits.
+- [x] Seed editable fixed purchase packages for 100, 500, and 1,000 credits, with server-calculated USD amounts.
+- [x] Use PayPal Sandbox return-page capture only, with no credit grant until the server verifies a completed capture.
+- [x] Keep every editable package’s USD amount server-derived from the active USD-per-10-credit policy whenever either setting changes.

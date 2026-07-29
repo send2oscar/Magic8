@@ -9,4 +9,6 @@ export const ENV = {
   forgeApiKey: process.env.BUILT_IN_FORGE_API_KEY ?? "",
   comfyuiServerUrl: process.env.COMFYUI_SERVER_URL ?? "",
   comfyuiApiToken: process.env.COMFYUI_API_TOKEN ?? "",
+  paypalClientId: process.env.VITE_PAYPAL_CLIENT_ID ?? "",
+  paypalClientSecret: process.env.PAYPAL_CLIENT_SECRET ?? "",
 };

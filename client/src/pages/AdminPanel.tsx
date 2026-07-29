@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { AdminCreditPaymentControls } from "@/components/AdminCreditPaymentControls";
 import { trpc } from "@/lib/trpc";
 import { CircleAlert, FileWarning, GalleryHorizontalEnd, LoaderCircle, LogOut, ShieldCheck, UserRound, Users } from "lucide-react";
 import React, { useEffect, useState } from "react";
@@ -119,6 +120,7 @@ export default function AdminPanel() {
         </Card>
 
         <section className="min-w-0 space-y-6">
+          <AdminCreditPaymentControls />
           {selectedUserId === null ? (
             <Card className="hud-frame bg-card/50 p-8 text-center text-muted-foreground">Select a user to review their profile, processing routes, gallery, and complete image-generation task errors.</Card>
           ) : (

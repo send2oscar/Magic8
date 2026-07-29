@@ -5,9 +5,8 @@ import { passwordAdminProcedure, publicProcedure, router, protectedProcedure } f
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import {
+  chargeAndCompleteTryOn,
   getUserCredits,
-  deductCredits,
-  addCredits,
   saveUserPhoto,
   getUserPhotos,
   saveTryOnHistory,
@@ -22,6 +21,18 @@ import {
   updateTryOnTaskStages,
   getActiveTryOnTask,
   getUserTryOnTask,
+  createPaypalPaymentRecord,
+  fulfillPaypalPayment,
+  getActiveCreditPackages,
+  getAdminCreditPackages,
+  getAdminPaypalPayments,
+  getCreditPackageById,
+  getCreditPolicy,
+  getCreditCostForRoute,
+  getPaypalPaymentForUser,
+  markPaypalPaymentStatus,
+  saveAdminCreditPackage,
+  updateCreditPolicy,
   type TryOnTaskStage,
 } from "./db";
 import { storagePut } from "./storage";
@@ -54,11 +65,12 @@ import { getComfyUiPocDefaultPrompt } from "./comfyuiPocDefaultPrompt";
 import { processDashboardQwenPoc } from "./dashboardQwenPoc";
 import {
   APPROVED_QWEN_LORAS,
-  QWEN_EDIT_CREDIT_COST,
   QWEN_LORA_STRENGTH_MAX,
   QWEN_LORA_STRENGTH_MIN,
   QWEN_WORKFLOW_FILE_NAME,
 } from "./comfyuiQwenWorkflow";
+import { calculatePackagePriceCents, formatUsdFromCents } from "./creditPolicy";
+import { captureSandboxPaypalOrder, createSandboxPaypalOrder, PayPalRequestError } from "./paypal";
 
 // Shirt styles available for try-on
 const SHIRT_STYLES = [
@@ -110,6 +122,31 @@ function getInsertedHistoryId(result: unknown): number | null {
 function requireProjectOwner(user: { openId: string }) {
   if (!ENV.ownerOpenId || user.openId !== ENV.ownerOpenId) {
     throw new TRPCError({ code: "FORBIDDEN", message: "Only the project owner can pair a local ComfyUI workstation." });
+  }
+}
+
+function getRequestOrigin(req: { headers: { origin?: unknown; host?: unknown; "x-forwarded-host"?: unknown } }) {
+  const origin = Array.isArray(req.headers.origin) ? req.headers.origin[0] : req.headers.origin;
+  if (typeof origin !== "string" || !origin.trim()) {
+    throw new TRPCError({ code: "BAD_REQUEST", message: "Your browser did not provide a valid application origin for PayPal return handling." });
+  }
+  try {
+    const parsed = new URL(origin);
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") throw new Error("Invalid protocol");
+    const forwardedHost = req.headers["x-forwarded-host"];
+    const requestHost = Array.isArray(forwardedHost)
+      ? forwardedHost[0]
+      : typeof forwardedHost === "string"
+        ? forwardedHost.split(",")[0]?.trim()
+        : Array.isArray(req.headers.host)
+          ? req.headers.host[0]
+          : req.headers.host;
+    if (typeof requestHost === "string" && requestHost.trim() && parsed.host !== requestHost.trim()) {
+      throw new Error("Origin host does not match request host");
+    }
+    return parsed.origin;
+  } catch {
+    throw new TRPCError({ code: "BAD_REQUEST", message: "Your browser provided an invalid application origin for PayPal return handling." });
   }
 }
 
@@ -256,12 +293,40 @@ export const appRouter = router({
         }
         const completed = await completeBridgeTaskLease(input.taskId, device.id, input.leaseCredential);
         if (!completed) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "The Bridge task lease is no longer valid." });
-        await updateTryOnHistory(task.historyId, {
-          status: "success",
-          resultImageUrl: result.url,
-          resultImageKey: result.key,
-          creditsDeducted: QWEN_EDIT_CREDIT_COST,
-        });
+        const legacyReservedCredits = history.creditsDeducted > 0 ? history.creditsDeducted : 0;
+        if (legacyReservedCredits > 0) {
+          await updateTryOnHistory(task.historyId, {
+            status: "success",
+            resultImageUrl: result.url,
+            resultImageKey: result.key,
+            creditsDeducted: legacyReservedCredits,
+          });
+        } else {
+          const creditCost = await getCreditCostForRoute("xxx");
+          if (!creditCost) {
+            const message = "The XXX result could not be finalized because the administrator credit policy is unavailable. No credits were deducted.";
+            await failLocalBridgeTaskForUser(task.userId, task.historyId, message);
+            return { success: false, message };
+          }
+          const finalized = await chargeAndCompleteTryOn({
+            userId: task.userId,
+            historyId: task.historyId,
+            creditCost,
+            resultImageUrl: result.url,
+            resultImageKey: result.key,
+          });
+          if (finalized !== "charged") {
+            if (finalized === "already_finalized") {
+              const latest = await getUserTryOnTask(task.userId, task.historyId);
+              if (latest?.status === "success") return { success: true };
+            }
+            const message = finalized === "insufficient_credits"
+              ? `Your XXX result was generated, but ${creditCost} credits are no longer available. No credits were deducted, so it was not added to your Gallery.`
+              : "The XXX result could not be finalized. No credits were deducted.";
+            await failLocalBridgeTaskForUser(task.userId, task.historyId, message);
+            return { success: false, message };
+          }
+        }
         await updateTryOnTaskStages(task.historyId, buildCompletedBridgeStages(parseLocalBridgeStages(history.bubbleApiResponse)));
         return { success: true };
       }),
@@ -313,6 +378,104 @@ export const appRouter = router({
       }),
   }),
 
+  payments: router({
+    packages: protectedProcedure.query(() => getActiveCreditPackages()),
+    createPaypalOrder: protectedProcedure
+      .input(z.object({ packageId: z.number().int().positive() }))
+      .mutation(async ({ ctx, input }) => {
+        const creditPackage = await getCreditPackageById(input.packageId);
+        const policy = await getCreditPolicy();
+        if (!creditPackage || !policy) {
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Credit packages are temporarily unavailable. Please try again shortly." });
+        }
+        const amountCents = calculatePackagePriceCents(creditPackage.credits, policy.priceCentsPerTenCredits);
+        const origin = getRequestOrigin(ctx.req);
+        let createdOrder: { orderId: string; approvalUrl: string };
+        try {
+          createdOrder = await createSandboxPaypalOrder({
+            amountCents,
+            description: `${creditPackage.credits} application credits`,
+            returnUrl: `${origin}/dashboard?paypal=return`,
+            cancelUrl: `${origin}/dashboard?paypal=cancel`,
+            userId: ctx.user.id,
+            packageId: creditPackage.id,
+          });
+        } catch (error) {
+          console.error("[PayPal] Failed to create Sandbox order", { userId: ctx.user.id, packageId: creditPackage.id, error: error instanceof Error ? error.message : "unknown" });
+          throw new TRPCError({
+            code: "BAD_GATEWAY",
+            message: error instanceof PayPalRequestError ? error.message : "PayPal Sandbox could not start checkout. Please try again.",
+          });
+        }
+        const payment = await createPaypalPaymentRecord({
+          userId: ctx.user.id,
+          packageId: creditPackage.id,
+          orderId: createdOrder.orderId,
+          creditAmount: creditPackage.credits,
+          expectedAmountCents: amountCents,
+        });
+        if (!payment) {
+          console.error("[PayPal] Created remote order without local payment record", { orderId: createdOrder.orderId, userId: ctx.user.id });
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "The checkout record could not be prepared. No credits were granted; please start a new checkout." });
+        }
+        return {
+          orderId: createdOrder.orderId,
+          approvalUrl: createdOrder.approvalUrl,
+          creditAmount: creditPackage.credits,
+          amountCents,
+          amountUsd: formatUsdFromCents(amountCents),
+        };
+      }),
+    capturePaypalOrder: protectedProcedure
+      .input(z.object({ orderId: z.string().min(8).max(127) }))
+      .mutation(async ({ ctx, input }) => {
+        const payment = await getPaypalPaymentForUser(ctx.user.id, input.orderId);
+        if (!payment) throw new TRPCError({ code: "NOT_FOUND", message: "This PayPal checkout record could not be found in your account." });
+        if (payment.status === "completed") {
+          return { status: "already_completed" as const, creditAmount: payment.creditAmount };
+        }
+        if (payment.status !== "created") {
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "This PayPal checkout is no longer eligible for capture. Start a new purchase if you still need credits." });
+        }
+        try {
+          const capture = await captureSandboxPaypalOrder(input.orderId);
+          const fulfilled = await fulfillPaypalPayment({
+            userId: ctx.user.id,
+            orderId: input.orderId,
+            captureId: capture.captureId,
+            capturedAmountCents: capture.capturedAmountCents,
+          });
+          if (!fulfilled) throw new Error("Payment fulfillment transaction did not complete.");
+          if (fulfilled.status === "amount_mismatch") {
+            throw new TRPCError({ code: "PRECONDITION_FAILED", message: "The PayPal amount did not match the server-created checkout. No credits were granted." });
+          }
+          if (fulfilled.status === "not_found" || fulfilled.status === "not_capturable") {
+            throw new TRPCError({ code: "PRECONDITION_FAILED", message: "The PayPal checkout is no longer eligible for capture. No duplicate credits were granted." });
+          }
+          return { status: fulfilled.status, creditAmount: fulfilled.creditAmount ?? payment.creditAmount };
+        } catch (error) {
+          if (error instanceof TRPCError) throw error;
+          await markPaypalPaymentStatus(
+            ctx.user.id,
+            input.orderId,
+            "failed",
+            error instanceof Error ? error.message : "PayPal capture failed.",
+          );
+          console.error("[PayPal] Sandbox capture failed", { userId: ctx.user.id, orderId: input.orderId, error: error instanceof Error ? error.message : "unknown" });
+          throw new TRPCError({
+            code: "BAD_GATEWAY",
+            message: error instanceof PayPalRequestError ? error.message : "PayPal could not confirm this checkout. No credits were granted.",
+          });
+        }
+      }),
+    cancelPaypalOrder: protectedProcedure
+      .input(z.object({ orderId: z.string().min(8).max(127) }))
+      .mutation(async ({ ctx, input }) => {
+        await markPaypalPaymentStatus(ctx.user.id, input.orderId, "cancelled", "Buyer cancelled at PayPal.");
+        return { success: true } as const;
+      }),
+  }),
+
   admin: router({
     session: publicProcedure.query(({ ctx }) => ({ authenticated: hasAdminSession(ctx.req), configured: isAdminLoginConfigured() })),
     login: publicProcedure
@@ -333,6 +496,39 @@ export const appRouter = router({
     userGallery: passwordAdminProcedure.input(z.object({ userId: z.number().int().positive() })).query(({ input }) => getUserGallery(input.userId)),
     userTaskDiagnostics: passwordAdminProcedure.input(z.object({ userId: z.number().int().positive() })).query(({ input }) => getAdminUserTaskDiagnostics(input.userId)),
     userTaskErrors: passwordAdminProcedure.input(z.object({ userId: z.number().int().positive() })).query(({ input }) => getAdminUserTaskErrors(input.userId)),
+    creditPolicy: passwordAdminProcedure.query(() => getCreditPolicy()),
+    updateCreditPolicy: passwordAdminProcedure
+      .input(z.object({
+        standardTryOnCredits: z.number().int().positive().max(10_000),
+        xxxTryOnCredits: z.number().int().positive().max(10_000),
+        priceCentsPerTenCredits: z.number().int().positive().max(10_000_000),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const policy = await updateCreditPolicy(input, ctx.user?.id ?? null);
+        if (!policy) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "The credit policy could not be saved." });
+        return policy;
+      }),
+    creditPackages: passwordAdminProcedure.query(() => getAdminCreditPackages()),
+    saveCreditPackage: passwordAdminProcedure
+      .input(z.object({
+        id: z.number().int().positive().optional(),
+        credits: z.number().int().positive().max(1_000_000),
+        status: z.enum(["active", "inactive"]),
+        sortOrder: z.number().int().min(0).max(100_000),
+      }))
+      .mutation(async ({ input }) => {
+        try {
+          const creditPackage = await saveAdminCreditPackage(input);
+          if (!creditPackage) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "The credit package could not be saved." });
+          const policy = await getCreditPolicy();
+          if (!policy) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "The credit policy is unavailable." });
+          return { ...creditPackage, priceCents: calculatePackagePriceCents(creditPackage.credits, policy.priceCentsPerTenCredits) };
+        } catch (error) {
+          if (error instanceof TRPCError) throw error;
+          throw new TRPCError({ code: "BAD_REQUEST", message: error instanceof Error ? error.message : "The credit package is invalid." });
+        }
+      }),
+    paypalPayments: passwordAdminProcedure.query(() => getAdminPaypalPayments()),
   }),
 
   // Credits management
@@ -340,6 +536,17 @@ export const appRouter = router({
     getBalance: protectedProcedure.query(async ({ ctx }) => {
       const balance = await getUserCredits(ctx.user.id);
       return { balance };
+    }),
+    policy: protectedProcedure.query(async () => {
+      const policy = await getCreditPolicy();
+      if (!policy) {
+        throw new TRPCError({ code: "PRECONDITION_FAILED", message: "The administrator credit policy is temporarily unavailable." });
+      }
+      return {
+        standardTryOnCredits: policy.standardTryOnCredits,
+        xxxTryOnCredits: policy.xxxTryOnCredits,
+        priceCentsPerTenCredits: policy.priceCentsPerTenCredits,
+      };
     }),
   }),
 
@@ -546,7 +753,7 @@ export const appRouter = router({
         })
       )
       .mutation(async ({ ctx, input }) => {
-        let creditsDeducted = false;
+        let creditCost = 0;
         let historyId: number | null = null;
         let taskFinalized = false;
         const taskStages: TryOnTaskStage[] = [{
@@ -596,11 +803,18 @@ export const appRouter = router({
         try {
           // Check the balance before resolving the selected record so a user who
           // cannot afford a try-on receives the correct actionable response.
+          creditCost = await getCreditCostForRoute("standard") ?? 0;
+          if (!creditCost) {
+            throw new TRPCError({
+              code: "INTERNAL_SERVER_ERROR",
+              message: "The administrator credit policy is temporarily unavailable.",
+            });
+          }
           const balance = await getUserCredits(ctx.user.id);
-          if (balance < 1) {
+          if (balance < creditCost) {
             throw new TRPCError({
               code: "FORBIDDEN",
-              message: "Insufficient credits. You need at least 1 credit to try on a shirt.",
+              message: `Insufficient credits. You need at least ${creditCost} credits to try on a shirt.`,
             });
           }
 
@@ -660,16 +874,8 @@ export const appRouter = router({
           }
           await beginTaskStage("task_created", "Processing task created");
 
-          // Deduct credits from user (server-side enforcement)
-          const creditDeducted = await deductCredits(ctx.user.id, 1);
-          if (!creditDeducted) {
-            throw new TRPCError({
-              code: "INTERNAL_SERVER_ERROR",
-              message: "Failed to deduct credits",
-            });
-          }
-          creditsDeducted = true;
-          await beginTaskStage("credit_reserved", "One credit reserved");
+          await beginTaskStage("credit_policy", `${creditCost} credit${creditCost === 1 ? "" : "s"} will be charged only after a successful result`);
+          await completeActiveTaskStage();
 
           // Generate shirt try-on image using AI image generation
           try {
@@ -725,36 +931,54 @@ The new shirt should be ${shirtInfo.name} with a ${shirtInfo.color} color.`;
             
             console.log("[Shirt Try-On] Success! Generated image URL:", result.url);
             await beginTaskStage("result_saving", "Saving generated result");
-            await updateTryOnHistory(historyId, {
-              status: "success",
+            const finalized = await chargeAndCompleteTryOn({
+              userId: ctx.user.id,
+              historyId,
+              creditCost,
               resultImageUrl: result.url,
-              creditsDeducted: 1,
             });
+            if (finalized !== "charged") {
+              if (finalized === "already_finalized") {
+                const latest = await getUserTryOnTask(ctx.user.id, historyId);
+                if (latest?.status === "success") {
+                  taskFinalized = true;
+                  return {
+                    success: true,
+                    resultImageUrl: latest.resultImageUrl,
+                    creditsRemaining: await getUserCredits(ctx.user.id),
+                    shirtApplied: shirtInfo.name,
+                  };
+                }
+              }
+              const safeMessage = finalized === "insufficient_credits"
+                ? `Your result was generated, but ${creditCost} credits are no longer available. No credits were deducted, so it was not added to your Gallery.`
+                : "The generated result could not be finalized. No credits were deducted.";
+              await failActiveTaskStage(safeMessage);
+              await updateTryOnHistory(historyId, { status: "failed", creditsDeducted: 0 });
+              taskFinalized = true;
+              throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: safeMessage });
+            }
             await completeActiveTaskStage();
             taskStages.push({ key: "completed", label: "Try-on complete", state: "completed", timestamp: Date.now() });
             await persistTaskStages();
             taskFinalized = true;
+            const creditsRemaining = await getUserCredits(ctx.user.id);
             return {
               success: true,
               resultImageUrl: result.url,
-              creditsRemaining: balance - 1,
+              creditsRemaining,
               shirtApplied: shirtInfo.name,
             }
           } catch (genError) {
+            if (taskFinalized && genError instanceof TRPCError) throw genError;
             const isSourceImageAccessError = genError instanceof SourceImageAccessError;
             console.error("[Shirt Try-On] Generation failed", {
               category: isSourceImageAccessError ? "source_image_access" : "provider_or_processing",
               providerStatus: genError instanceof ImageGenerationRequestError ? genError.status : undefined,
             });
-            if (creditsDeducted) {
-              const refunded = await addCredits(ctx.user.id, 1);
-              if (!refunded) {
-                console.error("[Shirt Try-On] Failed to refund the credit after generation failure");
-              }
-            }
             const safeMessage = isSourceImageAccessError
-              ? "We couldn't access the selected photo for the AI edit. Your credit has been returned. Please upload that photo again and retry."
-              : "We couldn't complete the AI try-on this time. Your credit has been returned. Please try again in a moment.";
+              ? "We couldn't access the selected photo for the AI edit. No credits were deducted. Please upload that photo again and retry."
+              : "We couldn't complete the AI try-on this time. No credits were deducted. Please try again in a moment.";
             await failActiveTaskStage(safeMessage);
             await updateTryOnHistory(historyId, { status: "failed", creditsDeducted: 0 });
             taskFinalized = true;
@@ -765,11 +989,7 @@ The new shirt should be ${shirtInfo.name} with a ${shirtInfo.color} color.`;
           }
         } catch (error) {
           if (historyId && !taskFinalized) {
-            const safeMessage = "We couldn't complete the AI try-on this time. Your credit has been returned. Please try again in a moment.";
-            if (creditsDeducted) {
-              await addCredits(ctx.user.id, 1);
-              creditsDeducted = false;
-            }
+            const safeMessage = "We couldn't complete the AI try-on this time. No credits were deducted. Please try again in a moment.";
             await failActiveTaskStage(safeMessage);
             await updateTryOnHistory(historyId, { status: "failed", creditsDeducted: 0 });
             taskFinalized = true;

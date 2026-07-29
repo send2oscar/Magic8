@@ -1,9 +1,11 @@
 import { TRPCError } from "@trpc/server";
 import {
   addCredits,
+  chargeAndCompleteTryOn,
   deductCredits,
   failPendingTryOnTask,
   getComfyUiTaskMetadata,
+  getCreditCostForRoute,
   getUserCredits,
   getUserPhotos,
   getUserTryOnTask,
@@ -25,7 +27,6 @@ import {
 } from "./comfyui";
 import {
   DEFAULT_QWEN_LORA_WEIGHTS,
-  QWEN_EDIT_CREDIT_COST,
   QWEN_EDIT_STYLE_ID,
   QWEN_EDIT_STYLE_NAME,
   type QwenLoraWeights,
@@ -76,24 +77,29 @@ function failStages(stages: TryOnTaskStage[], message: string): TryOnTaskStage[]
   return [...next, { key: "failed", label: "Qwen edit could not be completed", state: "error", detail: message, timestamp: Date.now() }];
 }
 
-function safeErrorMessage(error: unknown): string {
+function safeErrorMessage(error: unknown, legacyReservedCredits: number = 0): string {
   const detail = error instanceof Error && error.message
     ? error.message
     : "The Qwen edit could not be completed.";
-  return `${detail} Your 10 credits have been returned.`;
+  return legacyReservedCredits > 0
+    ? `${detail} Your ${legacyReservedCredits} credits have been returned.`
+    : `${detail} No credits were deducted.`;
 }
 
-async function refundAndFail(
+async function failWithoutCharge(
   userId: number,
   historyId: number,
   stages: TryOnTaskStage[],
   message: string,
+  legacyReservedCredits: number = 0,
   metadata?: ComfyUiTaskMetadata,
 ) {
   const markedFailed = await failPendingTryOnTask(historyId, failStages(stages, message), metadata);
   if (!markedFailed) return;
-  const refunded = await addCredits(userId, QWEN_EDIT_CREDIT_COST);
-  if (!refunded) console.error("[ComfyUI] Failed to refund XXX credits for task", { historyId, credits: QWEN_EDIT_CREDIT_COST });
+  if (legacyReservedCredits > 0) {
+    const refunded = await addCredits(userId, legacyReservedCredits);
+    if (!refunded) console.error("[ComfyUI] Failed to refund legacy XXX reservation", { historyId, credits: legacyReservedCredits });
+  }
 }
 
 /** Creates a durable direct-ComfyUI Qwen task using the fixed approved workflow. */
@@ -105,9 +111,13 @@ export async function startApprovedQwenTask(
 ) {
   const prompt = positivePrompt ?? "";
   const loraWeights: QwenLoraWeights = { ...DEFAULT_QWEN_LORA_WEIGHTS, ...requestedLoraWeights };
+  const creditCost = await getCreditCostForRoute("xxx");
+  if (!creditCost) {
+    throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "The administrator credit policy is temporarily unavailable." });
+  }
   const balance = await getUserCredits(userId);
-  if (balance < QWEN_EDIT_CREDIT_COST) {
-    throw new TRPCError({ code: "FORBIDDEN", message: `Insufficient credits. You need at least ${QWEN_EDIT_CREDIT_COST} credits to use XXX.` });
+  if (balance < creditCost) {
+    throw new TRPCError({ code: "FORBIDDEN", message: `Insufficient credits. You need at least ${creditCost} credits to use XXX.` });
   }
 
   const photo = (await getUserPhotos(userId)).find(candidate => candidate.id === photoId);
@@ -145,11 +155,8 @@ export async function startApprovedQwenTask(
   ];
   await updateTryOnTaskStages(historyId, stages);
 
-  const deducted = await deductCredits(userId, QWEN_EDIT_CREDIT_COST);
-  if (!deducted) {
-    await updateTryOnHistory(historyId, { status: "failed", creditsDeducted: 0 });
-    throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to reserve ${QWEN_EDIT_CREDIT_COST} credits for XXX.` });
-  }
+  stages = advanceStage(stages, "credit_pending", `${creditCost} credit${creditCost === 1 ? "" : "s"} will be charged after completion`);
+  await updateTryOnTaskStages(historyId, stages);
 
   try {
     stages = advanceStage(stages, "comfyui_connection", "Checking direct ComfyUI connection");
@@ -159,22 +166,23 @@ export async function startApprovedQwenTask(
     stages = advanceStage(stages, "source_upload", "Sending the selected photo to Qwen");
     await updateTryOnTaskStages(historyId, stages);
     const job = await submitApprovedQwenEdit(photo.photoKey, prompt, loraWeights);
-    const metadata: ComfyUiTaskMetadata = {
-      kind: QWEN_EDIT_STYLE_ID,
-      promptId: job.promptId,
-      uploadedFilename: job.uploadedFilename,
-      queuedAt: Date.now(),
-      positivePrompt: prompt,
-      loraWeights,
-    };
+      const metadata: ComfyUiTaskMetadata = {
+        kind: QWEN_EDIT_STYLE_ID,
+        promptId: job.promptId,
+        uploadedFilename: job.uploadedFilename,
+        queuedAt: Date.now(),
+        creditCost,
+        positivePrompt: prompt,
+        loraWeights,
+      };
     stages = advanceStage(stages, "qwen_queued", "Qwen edit queued in ComfyUI", "The server will keep checking ComfyUI and save the result in Gallery.");
     await updateTryOnTaskStages(historyId, stages, metadata);
 
-    return { taskId: historyId, status: "pending" as const, creditsRemaining: balance - QWEN_EDIT_CREDIT_COST, shirtApplied: QWEN_EDIT_STYLE_NAME };
+    return { taskId: historyId, status: "pending" as const, creditsRemaining: balance, shirtApplied: QWEN_EDIT_STYLE_NAME };
   } catch (error) {
     const message = safeErrorMessage(error);
     console.error("[ComfyUI] Failed to start Qwen task", { historyId, category: error instanceof ComfyUiConfigurationError ? "configuration" : "remote" });
-    await refundAndFail(userId, historyId, stages, message);
+    await failWithoutCharge(userId, historyId, stages, message);
     throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message });
   }
 }
@@ -191,8 +199,11 @@ export async function refreshApprovedQwenTask(userId: number, historyId: number)
   const metadata = getComfyUiTaskMetadata(task.bubbleApiResponse);
   const existingStages = getTaskStages(task.bubbleApiResponse);
   if (!metadata) {
-    const message = "The Qwen task could not be recovered. Your credit has been returned.";
-    await refundAndFail(userId, historyId, existingStages, message);
+    const legacyReservedCredits = task.creditsDeducted > 0 ? task.creditsDeducted : 0;
+    const message = legacyReservedCredits > 0
+      ? `The Qwen task could not be recovered. Your ${legacyReservedCredits} credits have been returned.`
+      : "The Qwen task could not be recovered. No credits were deducted.";
+    await failWithoutCharge(userId, historyId, existingStages, message, legacyReservedCredits);
     return { status: "failed" as const, message };
   }
 
@@ -226,7 +237,37 @@ export async function refreshApprovedQwenTask(userId: number, historyId: number)
     const result = await downloadApprovedQwenOutput(output);
     const extension = output.filename.split(".").pop()?.toLowerCase() || "jpg";
     const stored = await storagePut(`comfyui-results/${userId}/${historyId}.${extension}`, result.data, result.contentType);
-    await updateTryOnHistory(historyId, { status: "success", resultImageUrl: stored.url, resultImageKey: stored.key, creditsDeducted: QWEN_EDIT_CREDIT_COST });
+    const legacyReservedCredits = task.creditsDeducted > 0 ? task.creditsDeducted : 0;
+    const policyCost = legacyReservedCredits || metadata.creditCost || await getCreditCostForRoute("xxx");
+    if (!policyCost) {
+      const message = "The XXX result could not be finalized because the administrator credit policy is unavailable. No credits were deducted.";
+      await failWithoutCharge(userId, historyId, stages, message, legacyReservedCredits, metadata);
+      return { status: "failed" as const, message };
+    }
+    if (legacyReservedCredits > 0) {
+      await updateTryOnHistory(historyId, { status: "success", resultImageUrl: stored.url, resultImageKey: stored.key, creditsDeducted: legacyReservedCredits });
+    } else {
+      const finalized = await chargeAndCompleteTryOn({
+        userId,
+        historyId,
+        creditCost: policyCost,
+        resultImageUrl: stored.url,
+        resultImageKey: stored.key,
+      });
+      if (finalized !== "charged") {
+        if (finalized === "already_finalized") {
+          const latest = await getUserTryOnTask(userId, historyId);
+          if (latest?.status === "success") {
+            return { status: "success" as const, resultImageUrl: latest.resultImageUrl, shirtApplied: QWEN_EDIT_STYLE_NAME };
+          }
+        }
+        const message = finalized === "insufficient_credits"
+          ? `Your XXX result was generated, but ${policyCost} credits are no longer available. No credits were deducted, so it was not added to your Gallery.`
+          : "The XXX result could not be finalized. No credits were deducted.";
+        await failWithoutCharge(userId, historyId, stages, message, 0, metadata);
+        return { status: "failed" as const, message };
+      }
+    }
     await updateTryOnTaskStages(historyId, completeStage(stages, "completed", "XXX edit complete"), metadata);
     return { status: "success" as const, resultImageUrl: stored.url, shirtApplied: QWEN_EDIT_STYLE_NAME };
   } catch (error) {
@@ -238,9 +279,10 @@ export async function refreshApprovedQwenTask(userId: number, historyId: number)
       await updateTryOnTaskStages(historyId, stages, metadata);
       return { status: "pending" as const };
     }
-    const message = safeErrorMessage(error);
+    const legacyReservedCredits = task.creditsDeducted > 0 ? task.creditsDeducted : 0;
+    const message = safeErrorMessage(error, legacyReservedCredits);
     console.error("[ComfyUI] Failed while refreshing Qwen task", { historyId, category: error instanceof ComfyUiConfigurationError ? "configuration" : "remote" });
-    await refundAndFail(userId, historyId, existingStages, message, metadata);
+    await failWithoutCharge(userId, historyId, existingStages, message, legacyReservedCredits, metadata);
     return { status: "failed" as const, message };
   }
 }

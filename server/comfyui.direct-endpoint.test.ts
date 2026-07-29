@@ -9,6 +9,7 @@ describe("configured direct ComfyUI endpoint", () => {
     const response = await axios.get(new URL("/system_stats", baseUrl).toString(), {
       timeout: 20_000,
       responseType: "json",
+      proxy: false,
     });
 
     expect(response.status).toBe(200);

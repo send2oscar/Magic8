@@ -29,6 +29,20 @@
       "when": 1784814791454,
       "tag": "0003_bored_weapon_omega",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1785333754917,
+      "tag": "0004_melodic_sabretooth",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "5",
+      "when": 1785333938775,
+      "tag": "0005_small_greymalkin",
+      "breakpoints": true
     }
   ]
 }

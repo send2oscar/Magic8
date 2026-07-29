@@ -10,11 +10,31 @@ const fullQwenError = `Qwen workstation traceback:\n${"Qwen diagnostic detail ".
 const mocks = vi.hoisted(() => ({
   invalidateSession: vi.fn(),
   setLocation: vi.fn(),
+  invalidateCreditPolicy: vi.fn(),
+  invalidateCreditPackages: vi.fn(),
+  invalidatePaypalPayments: vi.fn(),
+  invalidatePurchasePackages: vi.fn(),
+  updateCreditPolicy: vi.fn(),
+  saveCreditPackage: vi.fn(),
+  policyData: { id: 1, standardTryOnCredits: 1, xxxTryOnCredits: 10, priceCentsPerTenCredits: 100, updatedAt: new Date() },
+  packageData: [
+    { id: 1, credits: 100, priceCents: 1000, status: "active", sortOrder: 0 },
+    { id: 2, credits: 500, priceCents: 5000, status: "active", sortOrder: 1 },
+  ],
+  paymentData: [],
 }));
 
 vi.mock("@/lib/trpc", () => ({
   trpc: {
-    useUtils: () => ({ admin: { session: { invalidate: mocks.invalidateSession } } }),
+    useUtils: () => ({
+      admin: {
+        session: { invalidate: mocks.invalidateSession },
+        creditPolicy: { invalidate: mocks.invalidateCreditPolicy },
+        creditPackages: { invalidate: mocks.invalidateCreditPackages },
+        paypalPayments: { invalidate: mocks.invalidatePaypalPayments },
+      },
+      payments: { packages: { invalidate: mocks.invalidatePurchasePackages } },
+    }),
     admin: {
       session: { useQuery: () => ({ data: { authenticated: true, configured: true }, isLoading: false }) },
       listUsers: { useQuery: () => ({ data: [{ id: 7, name: "Oscar", email: "oscar@example.com", lastSignedIn: new Date() }], isLoading: false, isError: false }) },
@@ -40,6 +60,11 @@ vi.mock("@/lib/trpc", () => ({
           isError: false,
         }),
       },
+      creditPolicy: { useQuery: () => ({ data: mocks.policyData, isLoading: false, isError: false }) },
+      creditPackages: { useQuery: () => ({ data: mocks.packageData, isLoading: false, isError: false }) },
+      paypalPayments: { useQuery: () => ({ data: mocks.paymentData, isLoading: false, isError: false }) },
+      updateCreditPolicy: { useMutation: () => ({ isPending: false, mutateAsync: mocks.updateCreditPolicy }) },
+      saveCreditPackage: { useMutation: () => ({ isPending: false, mutateAsync: mocks.saveCreditPackage }) },
       logout: { useMutation: () => ({ isPending: false, mutate: vi.fn() }) },
     },
   },
@@ -48,7 +73,7 @@ vi.mock("@/lib/trpc", () => ({
 vi.mock("wouter", () => ({ useLocation: () => ["/admin", mocks.setLocation] }));
 vi.mock("@/components/ui/button", () => ({ Button: ({ children, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement>) => <button {...props}>{children}</button> }));
 vi.mock("@/components/ui/card", () => ({ Card: ({ children }: { children: React.ReactNode }) => <section>{children}</section> }));
-vi.mock("lucide-react", () => ({ CircleAlert: () => null, FileWarning: () => null, GalleryHorizontalEnd: () => null, LoaderCircle: () => null, LogOut: () => null, ShieldCheck: () => null, UserRound: () => null, Users: () => null }));
+vi.mock("lucide-react", () => ({ CircleAlert: () => null, CircleDollarSign: () => null, FileWarning: () => null, GalleryHorizontalEnd: () => null, LoaderCircle: () => null, LogOut: () => null, Plus: () => null, ReceiptText: () => null, Settings2: () => null, ShieldCheck: () => null, UserRound: () => null, Users: () => null }));
 
 describe("Admin Workspace diagnostics", () => {
   afterEach(() => {

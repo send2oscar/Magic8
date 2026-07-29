@@ -1,4 +1,4 @@
-import { int, mysqlEnum, mysqlTable, text, timestamp, varchar, decimal, longtext } from "drizzle-orm/mysql-core";
+import { index, int, mysqlEnum, mysqlTable, text, timestamp, varchar, decimal, longtext } from "drizzle-orm/mysql-core";
 
 /**
  * Core user table backing auth flow.
@@ -59,6 +59,61 @@ export const tryOnHistory = mysqlTable("try_on_history", {
 
 export type TryOnHistory = typeof tryOnHistory.$inferSelect;
 export type InsertTryOnHistory = typeof tryOnHistory.$inferInsert;
+
+/**
+ * One administrator-managed credit policy. Monetary values are stored as
+ * integer cents to avoid floating-point rounding in checkout calculations.
+ */
+export const creditPolicies = mysqlTable("credit_policies", {
+  id: int("id").autoincrement().primaryKey(),
+  standardTryOnCredits: int("standardTryOnCredits").default(1).notNull(),
+  xxxTryOnCredits: int("xxxTryOnCredits").default(10).notNull(),
+  priceCentsPerTenCredits: int("priceCentsPerTenCredits").default(100).notNull(),
+  updatedByUserId: int("updatedByUserId"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type CreditPolicy = typeof creditPolicies.$inferSelect;
+export type InsertCreditPolicy = typeof creditPolicies.$inferInsert;
+
+/** Editable fixed quantities; their USD price is always calculated from the active policy. */
+export const creditPackages = mysqlTable("credit_packages", {
+  id: int("id").autoincrement().primaryKey(),
+  credits: int("credits").notNull(),
+  status: mysqlEnum("status", ["active", "inactive"]).default("active").notNull(),
+  sortOrder: int("sortOrder").default(0).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type CreditPackage = typeof creditPackages.$inferSelect;
+export type InsertCreditPackage = typeof creditPackages.$inferInsert;
+
+/**
+ * Local payment ledger for PayPal resource identifiers and credit fulfillment.
+ * No card, payer, raw webhook, or credential data is persisted here.
+ */
+export const paypalPayments = mysqlTable("paypal_payments", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  packageId: int("packageId"),
+  orderId: varchar("orderId", { length: 127 }).notNull().unique(),
+  captureId: varchar("captureId", { length: 127 }).unique(),
+  creditAmount: int("creditAmount").notNull(),
+  expectedAmountCents: int("expectedAmountCents").notNull(),
+  status: mysqlEnum("status", ["created", "completed", "failed", "cancelled"]).default("created").notNull(),
+  failureDetail: longtext("failureDetail"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  capturedAt: timestamp("capturedAt"),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => ({
+  userCreatedIndex: index("paypal_payments_user_created_idx").on(table.userId, table.createdAt),
+  statusCreatedIndex: index("paypal_payments_status_created_idx").on(table.status, table.createdAt),
+}));
+
+export type PayPalPayment = typeof paypalPayments.$inferSelect;
+export type InsertPayPalPayment = typeof paypalPayments.$inferInsert;
 
 /**
  * A workstation paired by the project owner. Only a one-way hash of the

@@ -1,6 +1,7 @@
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { CreditPurchasePanel } from "@/components/CreditPurchasePanel";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Textarea } from "@/components/ui/textarea";
@@ -77,6 +78,7 @@ export default function Dashboard() {
 
   // tRPC queries and mutations
   const creditsQuery = trpc.credits.getBalance.useQuery();
+  const creditPolicyQuery = trpc.credits.policy.useQuery();
   const photosQuery = trpc.photos.list.useQuery();
   const shirtsQuery = trpc.shirts.list.useQuery();
   const tryOnMutation = trpc.tryOn.process.useMutation();
@@ -142,7 +144,7 @@ export default function Dashboard() {
       return;
     }
 
-    const message = taskStatus.message || "The XXX edit was not completed. Your 10 credits have been returned.";
+    const message = taskStatus.message || "The XXX edit was not completed. No credits were charged.";
     setBackgroundQwenError(message);
     toast.error(message);
   }, [activeQwenTaskId, creditsQuery, photosQuery, qwenEditStatusQuery.data]);
@@ -306,7 +308,12 @@ export default function Dashboard() {
     if (tryOnInFlight.current) return;
 
     const isQwenEdit = selectedShirt === QWEN_EDIT_STYLE_ID;
-    const requiredCredits = isQwenEdit ? 10 : 1;
+    const policy = creditPolicyQuery.data;
+    if (!policy) {
+      toast.error("The administrator credit policy is still loading. Please try again in a moment.");
+      return;
+    }
+    const requiredCredits = isQwenEdit ? policy.xxxTryOnCredits : policy.standardTryOnCredits;
     const requestEpoch = submissionEpoch.current;
 
     if ((creditsQuery.data?.balance || 0) < requiredCredits) {
@@ -408,6 +415,11 @@ export default function Dashboard() {
   const selectedShirtName = selectedShirt === QWEN_EDIT_STYLE_ID
     ? "XXX"
     : shirtsQuery.data?.find(shirt => shirt.id === selectedShirt)?.name ?? null;
+  const standardCreditCost = creditPolicyQuery.data?.standardTryOnCredits;
+  const xxxCreditCost = creditPolicyQuery.data?.xxxTryOnCredits;
+  const formatCreditCost = (amount: number | undefined) => amount === undefined
+    ? "… Credits"
+    : `${amount} ${amount === 1 ? "Credit" : "Credits"}`;
   const processingRouteLabel = selectedShirt === QWEN_EDIT_STYLE_ID
     ? "LOCAL COMFYUI (QWEN)"
     : selectedShirt
@@ -448,6 +460,9 @@ export default function Dashboard() {
 
       {/* Main content */}
       <div className="container py-12">
+        <div className="mb-8">
+          <CreditPurchasePanel onCreditsChanged={() => creditsQuery.refetch()} />
+        </div>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           {/* Left: Photo Upload */}
           <Card className="hud-frame bg-card/50 backdrop-blur">
@@ -521,7 +536,7 @@ export default function Dashboard() {
                       }`}
                     >
                       <Shirt className="w-6 h-6 mx-auto mb-2" style={{ color: shirt.color }} />
-                      <p className="text-sm font-bold">{shirt.name} (1 Credit)</p>
+                      <p className="text-sm font-bold">{shirt.name} ({formatCreditCost(standardCreditCost)})</p>
                     </button>
                   ))}
                   <button
@@ -536,7 +551,7 @@ export default function Dashboard() {
                     }`}
                   >
                     <Shirt className="w-6 h-6 mx-auto mb-2" />
-                    <p className="text-sm font-bold">XXX (10 Credits)</p>
+                    <p className="text-sm font-bold">XXX ({formatCreditCost(xxxCreditCost)})</p>
                     <p className="mt-1 text-xs text-muted-foreground">Qwen edit</p>
                   </button>
                 </div>
