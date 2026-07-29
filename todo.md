@@ -168,7 +168,7 @@
 - [x] Inspect the direct local-ComfyUI configuration and reproduce the reported XXX submission failure.
 - [x] Trace the full failing request and error across the Dashboard, server, and local ComfyUI service; the remote history identifies node 104 (`WidgetToString`) as the execution failure.
 - [x] Apply the smallest safe fix for the confirmed failure cause without changing unrelated Dashboard behavior.
-- [ ] Verify a corrected XXX submission in local ComfyUI after the user retries it.
+- [x] Verify a corrected XXX submission in local ComfyUI after the user retries it.
 - [x] Save a recovery checkpoint for the verified WidgetToString fix and XXX configuration visibility update.
 
 ## XXX Visual Attention Treatment
@@ -193,6 +193,6 @@
 - [x] Save a recovery checkpoint for the verified wording-source correction.
 
 ## Notification Duration Extension
-- [ ] Extend the notification message display duration from the current short duration to 30 seconds.
-- [ ] Verify the extended duration in the Dashboard preview.
-- [ ] Save a recovery checkpoint for the extended notification duration.
+- [x] Extend the notification message display duration from the current short duration to 15 seconds.
+- [x] Verify the extended duration in the Dashboard preview.
+- [x] Save a recovery checkpoint for the extended notification duration.
