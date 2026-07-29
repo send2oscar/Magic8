@@ -215,4 +215,4 @@
 - [x] Add regression coverage for empty-subfolder output discovery and download while retaining path-traversal protections.
 - [x] Run the complete test suite, TypeScript checks, and production build.
 - [x] Confirm the two completed local-ComfyUI tasks remain successful with persisted Gallery result URLs.
-- [ ] Save a recovery checkpoint and synchronize the verified repair to GitHub main.
+- [x] Save a recovery checkpoint and synchronize the verified repair to GitHub main.
