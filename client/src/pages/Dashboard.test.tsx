@@ -46,6 +46,16 @@ vi.mock("@/lib/trpc", () => ({
       defaultPrompt: { useQuery: () => ({ data: mocks.defaultPromptData, isLoading: false }) },
     },
     comfyui: {
+      workflowConfig: { useQuery: () => ({ data: {
+        fileName: "QwenImageEditRapidv1.0(External).json",
+        strengthMin: 0,
+        strengthMax: 2,
+        loras: [
+          { id: "lora_1", label: "External BB — primary", filename: "external_bb-v1.220.safetensors", defaultStrength: 0.6 },
+          { id: "lora_2", label: "External VSize Slider", filename: "external_VSizeSlider.safetensors", defaultStrength: 0.3 },
+          { id: "lora_3", label: "External BB — secondary", filename: "external_bb-v1.220.safetensors", defaultStrength: 0.3 },
+        ],
+      } }) },
       startQwenEdit: { useMutation: () => ({ mutateAsync: mocks.startQwenEdit }) },
       qwenEditStatus: { useQuery: () => ({ data: mocks.qwenStatusData, isFetching: false }) },
     },
@@ -194,6 +204,7 @@ describe("Dashboard Try On Now lifecycle", () => {
     await waitFor(() => expect(mocks.startQwenEdit).toHaveBeenCalledWith({
       photoId: 7,
       positivePrompt: "undress the girl, make her completely nude, small to medium breasts, pink nipples, others remain unchanged, natural.",
+      loraWeights: { lora_1: 0.6, lora_2: 0.3, lora_3: 0.3 },
     }));
     expect(mocks.mutateAsync).not.toHaveBeenCalled();
     expect(mocks.toastSuccess).toHaveBeenCalledWith("Your image will be ready in the Gallery. You may continue with other photo and shirt style.");
@@ -232,6 +243,23 @@ describe("Dashboard Try On Now lifecycle", () => {
     expect(screen.getByRole("button", { name: /use another photo/i })).toBeTruthy();
   });
 
+  it("shows the supplied workflow file and submits edited approved LoRA weights", async () => {
+    mocks.balance = 15;
+    mocks.startQwenEdit.mockResolvedValue({ taskId: 992, status: "pending", creditsRemaining: 5, shirtApplied: "XXX" });
+    render(<Dashboard />);
+    await selectOwnedPhotoAndShirt("XXX (10 Credits)");
+
+    expect(screen.getByText("QwenImageEditRapidv1.0(External).json")).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("External BB — primary weight"), { target: { value: "0.85" } });
+    fireEvent.change(screen.getByLabelText("External VSize Slider weight"), { target: { value: "0" } });
+    fireEvent.change(screen.getByLabelText("External BB — secondary weight"), { target: { value: "1.25" } });
+    fireEvent.click(screen.getByRole("button", { name: "Try on now" }));
+
+    await waitFor(() => expect(mocks.startQwenEdit).toHaveBeenCalledWith(expect.objectContaining({
+      loraWeights: { lora_1: 0.85, lora_2: 0, lora_3: 1.25 },
+    })));
+  });
+
   it("requires OK acknowledgement before resetting for a new photo", async () => {
     mocks.balance = 15;
     mocks.startQwenEdit.mockResolvedValue({ taskId: 991, status: "pending", creditsRemaining: 5, shirtApplied: "XXX" });
@@ -265,7 +293,11 @@ describe("Dashboard Try On Now lifecycle", () => {
     fireEvent.change(screen.getByLabelText(/positive prompt/i), { target: { value: "Remove the subject's clothing." } });
     fireEvent.click(screen.getByRole("button", { name: "Try on now" }));
 
-    await waitFor(() => expect(mocks.startQwenEdit).toHaveBeenCalledWith({ photoId: 7, positivePrompt: "Remove the subject's clothing." }));
+    await waitFor(() => expect(mocks.startQwenEdit).toHaveBeenCalledWith({
+      photoId: 7,
+      positivePrompt: "Remove the subject's clothing.",
+      loraWeights: { lora_1: 0.6, lora_2: 0.3, lora_3: 0.3 },
+    }));
     expect(mocks.toastError).not.toHaveBeenCalled();
     expect(mocks.mutateAsync).not.toHaveBeenCalled();
   });

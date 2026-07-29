@@ -19,6 +19,9 @@ function formatEstimatedTime(seconds: number) {
 const DEMO_PHOTO_URL = '/manus-storage/demo_person_31d5a68a.jpg';
 const QWEN_EDIT_STYLE_ID = "qwen-image-edit-rapid";
 const IDLE_QWEN_TASK_ID = 1;
+type QwenLoraId = "lora_1" | "lora_2" | "lora_3";
+type QwenLoraWeights = Record<QwenLoraId, number>;
+const DEFAULT_QWEN_LORA_WEIGHTS: QwenLoraWeights = { lora_1: 0.6, lora_2: 0.3, lora_3: 0.3 };
 const SHIRT_PROMPTS: Record<string, string> = {
   "classic-white": "Change the current shirt to a crisp classic white crew-neck T-shirt. Preserve the person's face, pose, hands, body proportions, and background.",
   "neon-pink": "Change the current shirt to a vivid neon pink T-shirt with realistic fabric texture and lighting. Preserve the person's face, pose, hands, body proportions, and background.",
@@ -59,6 +62,7 @@ export default function Dashboard() {
   const [tryOnStartedAt, setTryOnStartedAt] = useState<number | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [positivePrompt, setPositivePrompt] = useState("");
+  const [qwenLoraWeights, setQwenLoraWeights] = useState<QwenLoraWeights>(DEFAULT_QWEN_LORA_WEIGHTS);
   const [activeQwenTaskId, setActiveQwenTaskId] = useState<number | null>(null);
   const [backgroundQwenError, setBackgroundQwenError] = useState<string | null>(null);
   const [hasTaskSubmissionStarted, setHasTaskSubmissionStarted] = useState(false);
@@ -73,6 +77,7 @@ export default function Dashboard() {
   const shirtsQuery = trpc.shirts.list.useQuery();
   const tryOnMutation = trpc.tryOn.process.useMutation();
   const defaultPromptQuery = trpc.comfyuiPoc.defaultPrompt.useQuery(undefined, { refetchOnWindowFocus: false });
+  const qwenWorkflowQuery = trpc.comfyui.workflowConfig.useQuery(undefined, { refetchOnWindowFocus: false });
   const startQwenEditMutation = trpc.comfyui.startQwenEdit.useMutation();
   const qwenEditStatusQuery = trpc.comfyui.qwenEditStatus.useQuery(
     { taskId: activeQwenTaskId ?? IDLE_QWEN_TASK_ID },
@@ -200,6 +205,23 @@ export default function Dashboard() {
     setPositivePrompt(SHIRT_PROMPTS[shirtId] ?? "");
   };
 
+  const handleLoraWeightChange = (id: QwenLoraId, rawValue: string) => {
+    const value = Number.parseFloat(rawValue);
+    if (!Number.isFinite(value)) return;
+    const min = qwenWorkflowQuery.data?.strengthMin ?? 0;
+    const max = qwenWorkflowQuery.data?.strengthMax ?? 2;
+    setQwenLoraWeights(current => ({ ...current, [id]: Math.min(max, Math.max(min, value)) }));
+  };
+
+  const resetLoraWeights = () => {
+    const configured = qwenWorkflowQuery.data?.loras;
+    if (!configured?.length) {
+      setQwenLoraWeights(DEFAULT_QWEN_LORA_WEIGHTS);
+      return;
+    }
+    setQwenLoraWeights(Object.fromEntries(configured.map(lora => [lora.id, lora.defaultStrength])) as QwenLoraWeights);
+  };
+
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (isPhotoSelectionLocked) return;
     const file = e.target.files?.[0];
@@ -317,6 +339,7 @@ export default function Dashboard() {
         const result = await startQwenEditMutation.mutateAsync({
           photoId: selectedPhoto.id,
           positivePrompt,
+          loraWeights: qwenLoraWeights,
         });
         if (submissionEpoch !== qwenSubmissionEpoch.current) {
           await creditsQuery.refetch();
@@ -508,6 +531,46 @@ export default function Dashboard() {
                     className="min-h-24 resize-y border-accent/40 bg-background/50 text-foreground focus-visible:ring-secondary"
                   />
                   <p className="text-xs text-muted-foreground">Selecting a shirt fills its suggested prompt. The value is submitted only for the XXX Qwen ComfyUI edit.</p>
+                </div>
+                <div className="space-y-4 rounded border border-secondary/40 bg-background/40 p-4" aria-labelledby="qwen-lora-editor-title">
+                    <div className="space-y-1">
+                      <p id="qwen-lora-editor-title" className="text-sm font-bold neon-cyan">QWEN LORA WEIGHTS</p>
+                      <p className="text-xs text-muted-foreground">Workflow file</p>
+                      <code className="block break-all rounded bg-background px-2 py-1 text-xs text-foreground">
+                        {qwenWorkflowQuery.data?.fileName ?? "QwenImageEditRapidv1.0(External).json"}
+                      </code>
+                    </div>
+                    <div className="grid gap-3">
+                      {(qwenWorkflowQuery.data?.loras ?? [
+                        { id: "lora_1", label: "External BB — primary", filename: "external_bb-v1.220.safetensors", defaultStrength: 0.6 },
+                        { id: "lora_2", label: "External VSize Slider", filename: "external_VSizeSlider.safetensors", defaultStrength: 0.3 },
+                        { id: "lora_3", label: "External BB — secondary", filename: "external_bb-v1.220.safetensors", defaultStrength: 0.3 },
+                      ]).map(lora => (
+                        <label key={lora.id} className="grid gap-1 sm:grid-cols-[minmax(0,1fr)_7rem] sm:items-center">
+                          <span className="min-w-0">
+                            <span className="block text-sm font-semibold text-foreground">{lora.label}</span>
+                            <span className="block truncate text-xs text-muted-foreground" title={lora.filename}>{lora.filename}</span>
+                          </span>
+                          <input
+                            type="number"
+                            aria-label={`${lora.label} weight`}
+                            min={qwenWorkflowQuery.data?.strengthMin ?? 0}
+                            max={qwenWorkflowQuery.data?.strengthMax ?? 2}
+                            step="0.05"
+                            value={qwenLoraWeights[lora.id as QwenLoraId]}
+                            onChange={event => handleLoraWeightChange(lora.id as QwenLoraId, event.target.value)}
+                            disabled={isPhotoSelectionLocked}
+                            className="h-10 w-full rounded border border-accent/40 bg-background px-3 text-foreground outline-none focus-visible:ring-2 focus-visible:ring-secondary disabled:cursor-not-allowed disabled:opacity-60"
+                          />
+                        </label>
+                      ))}
+                    </div>
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <p className="text-xs text-muted-foreground">Used only for Qwen edit. Allowed range: {qwenWorkflowQuery.data?.strengthMin ?? 0}–{qwenWorkflowQuery.data?.strengthMax ?? 2}. A weight of 0 disables that approved LoRA for this task.</p>
+                      <Button type="button" variant="outline" size="sm" onClick={resetLoraWeights} disabled={isPhotoSelectionLocked} className="border-secondary/60 text-secondary">
+                        RESET WEIGHTS
+                      </Button>
+                    </div>
                 </div>
               </div>
             </Card>

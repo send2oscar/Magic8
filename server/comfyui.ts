@@ -1,7 +1,7 @@
 import axios from "axios";
 import { ENV } from "./_core/env";
 import { storageGetSignedUrl } from "./storage";
-import { createApprovedQwenWorkflow, QWEN_OUTPUT_NODE_ID } from "./comfyuiQwenWorkflow";
+import { createApprovedQwenWorkflow, QWEN_OUTPUT_NODE_ID, type QwenLoraWeights } from "./comfyuiQwenWorkflow";
 
 const REQUEST_TIMEOUT_MS = 20_000;
 const MAX_SOURCE_BYTES = 5 * 1024 * 1024;
@@ -175,12 +175,16 @@ async function uploadSourceImage(photoKey: string): Promise<string> {
 }
 
 /** Uploads a user-owned S3 photo and queues only the approved XXX Qwen workflow. */
-export async function submitApprovedQwenEdit(photoKey: string, positivePrompt = ""): Promise<ComfyUiPrompt> {
+export async function submitApprovedQwenEdit(
+  photoKey: string,
+  positivePrompt = "",
+  loraWeights: Partial<QwenLoraWeights> = {},
+): Promise<ComfyUiPrompt> {
   const uploadedFilename = await uploadSourceImage(photoKey);
   const promptResponse = await readJson(await comfyFetch("/prompt", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ prompt: createApprovedQwenWorkflow(uploadedFilename, positivePrompt), client_id: crypto.randomUUID() }),
+    body: JSON.stringify({ prompt: createApprovedQwenWorkflow(uploadedFilename, positivePrompt, loraWeights), client_id: crypto.randomUUID() }),
   }));
   const promptId = safeOutputPart(promptResponse.prompt_id, "prompt identifier");
   return { promptId, uploadedFilename };

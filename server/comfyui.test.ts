@@ -1,7 +1,14 @@
 import axios from "axios";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { checkComfyUiConnection, getApprovedQwenOutput, getApprovedQwenTaskProgress } from "./comfyui";
-import { APPROVED_QWEN_CHECKPOINT, createApprovedQwenWorkflow, QWEN_INPUT_NODE_ID, QWEN_OUTPUT_NODE_ID, QWEN_PROMPT_NODE_ID } from "./comfyuiQwenWorkflow";
+import {
+  APPROVED_QWEN_CHECKPOINT,
+  createApprovedQwenWorkflow,
+  DEFAULT_QWEN_LORA_WEIGHTS,
+  QWEN_INPUT_NODE_ID,
+  QWEN_OUTPUT_NODE_ID,
+  QWEN_PROMPT_NODE_ID,
+} from "./comfyuiQwenWorkflow";
 import { ENV } from "./_core/env";
 
 const mocks = vi.hoisted(() => ({ request: vi.fn(), get: vi.fn() }));
@@ -59,6 +66,20 @@ describe("direct ComfyUI connection", () => {
     expect(workflow[QWEN_PROMPT_NODE_ID].inputs.prompt).toContain(prompt);
     expect(workflow["118"].inputs.ckpt_name).toBe(APPROVED_QWEN_CHECKPOINT);
     expect(() => createApprovedQwenWorkflow("../unsafe.png")).toThrow("invalid uploaded filename");
+  });
+
+  it("applies only the approved LoRA files with bounded per-task weights", () => {
+    const workflow = createApprovedQwenWorkflow("shirt-changer-input.png", "Edit this image.", {
+      lora_1: 0.85,
+      lora_2: 0,
+      lora_3: 1.25,
+    });
+
+    expect(workflow["103"].inputs.lora_1).toEqual({ on: true, lora: "external_bb-v1.220.safetensors", strength: 0.85 });
+    expect(workflow["103"].inputs.lora_2).toEqual({ on: false, lora: "external_VSizeSlider.safetensors", strength: 0 });
+    expect(workflow["103"].inputs.lora_3).toEqual({ on: true, lora: "external_bb-v1.220.safetensors", strength: 1.25 });
+    expect(createApprovedQwenWorkflow("shirt-changer-input.png")["103"].inputs.lora_1.strength).toBe(DEFAULT_QWEN_LORA_WEIGHTS.lora_1);
+    expect(() => createApprovedQwenWorkflow("shirt-changer-input.png", "", { lora_1: 2.01 })).toThrow("must be between 0 and 2");
   });
 
   it("omits the optional metadata chain that is incompatible with the direct ComfyUI host", () => {

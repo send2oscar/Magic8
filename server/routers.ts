@@ -51,7 +51,13 @@ import { ComfyUiPocError, runComfyUIPOC } from "./comfyuiPoc";
 import { createComfyUiPocLiveStatus, getComfyUiPocLiveStatus, updateComfyUiPocLiveStatus } from "./comfyuiPocLiveStatus";
 import { getComfyUiPocDefaultPrompt } from "./comfyuiPocDefaultPrompt";
 import { processDashboardQwenPoc } from "./dashboardQwenPoc";
-import { QWEN_EDIT_CREDIT_COST } from "./comfyuiQwenWorkflow";
+import {
+  APPROVED_QWEN_LORAS,
+  QWEN_EDIT_CREDIT_COST,
+  QWEN_LORA_STRENGTH_MAX,
+  QWEN_LORA_STRENGTH_MIN,
+  QWEN_WORKFLOW_FILE_NAME,
+} from "./comfyuiQwenWorkflow";
 
 // Shirt styles available for try-on
 const SHIRT_STYLES = [
@@ -109,12 +115,33 @@ function requireProjectOwner(user: { openId: string }) {
 const bridgeCredentialSchema = z.string().min(32).max(256);
 const bridgeLeaseSchema = z.string().min(32).max(256);
 const bridgeOutputMimeSchema = z.enum(["image/jpeg", "image/png", "image/webp"]);
+const qwenLoraStrengthSchema = z.number().finite().min(QWEN_LORA_STRENGTH_MIN).max(QWEN_LORA_STRENGTH_MAX);
+const qwenLoraWeightsSchema = z.object({
+  lora_1: qwenLoraStrengthSchema,
+  lora_2: qwenLoraStrengthSchema,
+  lora_3: qwenLoraStrengthSchema,
+}).strict();
 
 export const appRouter = router({
   comfyui: router({
+    workflowConfig: protectedProcedure.query(() => ({
+      fileName: QWEN_WORKFLOW_FILE_NAME,
+      strengthMin: QWEN_LORA_STRENGTH_MIN,
+      strengthMax: QWEN_LORA_STRENGTH_MAX,
+      loras: APPROVED_QWEN_LORAS.map(lora => ({
+        id: lora.id,
+        label: lora.label,
+        filename: lora.filename,
+        defaultStrength: lora.defaultStrength,
+      })),
+    })),
     startQwenEdit: protectedProcedure
-      .input(z.object({ photoId: z.number().int().positive(), positivePrompt: z.string().max(1_000_000).optional() }))
-      .mutation(({ ctx, input }) => startApprovedQwenTask(ctx.user.id, input.photoId, input.positivePrompt)),
+      .input(z.object({
+        photoId: z.number().int().positive(),
+        positivePrompt: z.string().max(1_000_000).optional(),
+        loraWeights: qwenLoraWeightsSchema.optional(),
+      }))
+      .mutation(({ ctx, input }) => startApprovedQwenTask(ctx.user.id, input.photoId, input.positivePrompt, input.loraWeights)),
     qwenEditStatus: protectedProcedure
       .input(z.object({ taskId: z.number().int().positive() }))
       .query(({ ctx, input }) => refreshApprovedQwenTask(ctx.user.id, input.taskId)),
