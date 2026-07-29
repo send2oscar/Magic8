@@ -129,11 +129,12 @@
 
 ## Release Safeguards
 - [x] Inspect the GitHub repository, remote branch state, and current protection rules for main.
-- [ ] Add a GitHub Actions test workflow and a RELEASE.md that records the verified release sequence.
+- [ ] Reauthorize the GitHub integration with workflow-write permission, then add the GitHub Actions test workflow and RELEASE.md release record.
 - [x] Protect main against force-pushes and deletion, requiring pull-request-based releases.
-- [ ] Verify the remote protections and release files, then save a recovery checkpoint.
+- [x] Verify the remote main protection policy: pull requests and linear history are required, while force-pushes and branch deletion are disabled.
+- [ ] Save a recovery checkpoint for the verified workflow synchronization and protected main merge.
 
 ## Submitted ComfyUI Workflow Synchronization
 - [x] Compare the user-supplied Qwen workflow with the current approved workflow and identify the three LoRA-node mappings.
 - [x] Update the approved workflow and retain bounded Dashboard controls mapped to the corresponding submitted LoRAs.
-- [ ] Add regression coverage, verify the generated ComfyUI payload, and prepare a protected-branch pull request for the adjustment.
+- [x] Add regression coverage, verify the generated ComfyUI payload, and merge the protected pull request for the adjustment.
