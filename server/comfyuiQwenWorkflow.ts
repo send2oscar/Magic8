@@ -11,18 +11,18 @@ export const QWEN_LORA_STRENGTH_MIN = 0;
 export const QWEN_LORA_STRENGTH_MAX = 2;
 
 export const APPROVED_QWEN_LORAS = [
-  { id: "lora_1", label: "External BB — primary", filename: "external_bb-v1.220.safetensors", defaultStrength: 0.6 },
-  { id: "lora_2", label: "External VSize Slider", filename: "external_VSizeSlider.safetensors", defaultStrength: 0.3 },
-  { id: "lora_3", label: "External BB — secondary", filename: "external_bb-v1.220.safetensors", defaultStrength: 0.3 },
+  { id: "lora_1", label: "External BB — primary", filename: "external_bb-v1.220.safetensors", defaultStrength: 1 },
+  { id: "lora_2", label: "External VSize Slider", filename: "external_VSizeSlider.safetensors", defaultStrength: 0.6 },
+  { id: "lora_3", label: "External B Slider", filename: "external_bslider_qwen_v1.safetensors", defaultStrength: 0.54 },
 ] as const;
 
 export type QwenLoraId = (typeof APPROVED_QWEN_LORAS)[number]["id"];
 export type QwenLoraWeights = Record<QwenLoraId, number>;
 
 export const DEFAULT_QWEN_LORA_WEIGHTS: QwenLoraWeights = {
-  lora_1: 0.6,
-  lora_2: 0.3,
-  lora_3: 0.3,
+  lora_1: 1,
+  lora_2: 0.6,
+  lora_3: 0.54,
 };
 
 export function isSafeApparelEditPrompt(prompt: string): boolean {
@@ -53,7 +53,7 @@ const APPROVED_QWEN_WORKFLOW: Workflow = {
   "75": { inputs: { strength: 1, pre_cfg: false, model: ["66", 0] }, class_type: "CFGNorm", _meta: { title: "CFGNorm" } },
   "77": {
     inputs: {
-      prompt: "ugly, blurry, distorted, artifacts, bad, wrong, low quality, anime, digital art, semirealistic, cartoon, manga, drawing, fake, unreal",
+      prompt: "ugly, blurry, distorted, artifacts, bad, wrong, low quality, anime, digital art, semirealistic, cartoon, manga, drawing, fake, unreal, large breasts",
       clip: ["103", 1],
       vae: ["118", 2],
       image: [QWEN_INPUT_NODE_ID, 0],
@@ -70,7 +70,7 @@ const APPROVED_QWEN_WORKFLOW: Workflow = {
   },
   [QWEN_OUTPUT_NODE_ID]: {
     inputs: {
-      filename: "shirt_changer_qwen_%time",
+      filename: "%time_%basemodelname_%seed",
       path: "qwen_edit/%date",
       extension: "jpg",
       lossless_webp: false,
@@ -82,6 +82,7 @@ const APPROVED_QWEN_WORKFLOW: Workflow = {
       time_format: "%Y-%m-%d-%H%M%S",
       show_preview: true,
       images: ["8", 0],
+      metadata: ["106", 0],
     },
     class_type: "Image Saver Simple",
     _meta: { title: "Website output image" },
@@ -91,13 +92,47 @@ const APPROVED_QWEN_WORKFLOW: Workflow = {
       PowerLoraLoaderHeaderWidget: { type: "PowerLoraLoaderHeaderWidget" },
       lora_1: { on: true, lora: "external_bb-v1.220.safetensors", strength: DEFAULT_QWEN_LORA_WEIGHTS.lora_1 },
       lora_2: { on: true, lora: "external_VSizeSlider.safetensors", strength: DEFAULT_QWEN_LORA_WEIGHTS.lora_2 },
-      lora_3: { on: true, lora: "external_bb-v1.220.safetensors", strength: DEFAULT_QWEN_LORA_WEIGHTS.lora_3 },
+      lora_3: { on: true, lora: "external_bslider_qwen_v1.safetensors", strength: DEFAULT_QWEN_LORA_WEIGHTS.lora_3 },
       "➕ Add Lora": "",
       model: ["118", 0],
       clip: ["118", 1],
     },
     class_type: "Power Lora Loader (rgthree)",
     _meta: { title: "Approved Power LoRA loader" },
+  },
+  "104": {
+    inputs: {
+      id: 0,
+      widget_name: "ckpt_name",
+      return_all: false,
+      node_title: "",
+      allowed_float_decimals: 2,
+      any_input: ["118", 0],
+    },
+    class_type: "WidgetToString",
+    _meta: { title: "Widget To String" },
+  },
+  "106": {
+    inputs: {
+      modelname: ["104", 0],
+      positive: "unknown",
+      negative: "unknown",
+      width: 512,
+      height: 512,
+      seed_value: ["117", 0],
+      steps: ["115", 0],
+      cfg: 1,
+      sampler_name: "euler",
+      scheduler_name: "beta57",
+      denoise: 1,
+      clip_skip: 0,
+      additional_hashes: "",
+      download_civitai_data: true,
+      easy_remix: true,
+      custom: "",
+    },
+    class_type: "Image Saver Metadata",
+    _meta: { title: "Image Saver Metadata" },
   },
   "115": { inputs: { value: 8 }, class_type: "INTConstant", _meta: { title: "Steps" } },
   "117": { inputs: { value: 0 }, class_type: "PrimitiveInt", _meta: { title: "Seed" } },
