@@ -184,4 +184,10 @@
 - [x] Keep the Positive Prompt text area visible for every shirt selection, including all five standard styles.
 - [x] Add regression coverage that proves the prompt remains visible and updates for standard and XXX selections.
 - [x] Verify the restored visibility in the Dashboard preview.
-- [ ] Save a recovery checkpoint for the Positive Prompt visibility fix.
+- [x] Save a recovery checkpoint for the Positive Prompt visibility fix.
+
+## XXX Configuration Label Source
+- [x] Trace why visible XXX configuration labels do not reflect direct wording edits in Dashboard.tsx; the server workflow response was taking precedence over the local fallback labels.
+- [x] Apply the smallest safe source-of-truth correction for the editable labels.
+- [x] Verify the new wording appears in the Dashboard.
+- [x] Save a recovery checkpoint for the verified wording-source correction.

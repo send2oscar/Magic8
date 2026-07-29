@@ -249,7 +249,7 @@ describe("Dashboard Try On Now lifecycle", () => {
     expect(screen.getByRole("button", { name: /use another photo/i })).toBeTruthy();
   });
 
-  it("hides the first XXX configuration row while submitting its backend default with the visible edited weights", async () => {
+  it("uses Dashboard-owned visible labels while submitting the hidden backend default and edited weights", async () => {
     mocks.balance = 15;
     mocks.startQwenEdit.mockResolvedValue({ taskId: 992, status: "pending", creditsRemaining: 5, shirtApplied: "XXX" });
     render(<Dashboard />);
@@ -257,8 +257,9 @@ describe("Dashboard Try On Now lifecycle", () => {
 
     expect(screen.getByText("QwenImageEditRapidv1.0(External).json")).toBeTruthy();
     expect(screen.queryByLabelText("External BB — primary weight")).toBeNull();
-    fireEvent.change(screen.getByLabelText("External VSize Slider weight"), { target: { value: "0" } });
-    fireEvent.change(screen.getByLabelText("External B Slider weight"), { target: { value: "1.25" } });
+    expect(screen.queryByLabelText("External VSize Slider weight")).toBeNull();
+    fireEvent.change(screen.getByLabelText("Vagina Fine Tune (The smaller, the tighter) weight"), { target: { value: "0" } });
+    fireEvent.change(screen.getByLabelText("Breast Fine Tune (The smaller value, the smaller breast) weight"), { target: { value: "1.25" } });
     fireEvent.click(screen.getByRole("button", { name: "Try on now" }));
 
     await waitFor(() => expect(mocks.startQwenEdit).toHaveBeenCalledWith(expect.objectContaining({

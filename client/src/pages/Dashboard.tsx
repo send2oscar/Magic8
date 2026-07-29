@@ -21,6 +21,11 @@ const QWEN_EDIT_STYLE_ID = "qwen-image-edit-rapid";
 const IDLE_QWEN_TASK_ID = 1;
 type QwenLoraId = "lora_1" | "lora_2" | "lora_3";
 type QwenLoraWeights = Record<QwenLoraId, number>;
+const QWEN_LORA_UI_LABELS: Record<QwenLoraId, string> = {
+  lora_1: "External BB — primary",
+  lora_2: "Vagina Fine Tune (The smaller, the tighter)",
+  lora_3: "Breast Fine Tune (The smaller value, the smaller breast)",
+};
 const DEFAULT_QWEN_LORA_WEIGHTS: QwenLoraWeights = { lora_1: 0.6, lora_2: 0.5, lora_3: 0.5 };
 const SHIRT_PROMPTS: Record<string, string> = {
   "classic-white": "Change the current shirt to a crisp classic white crew-neck T-shirt. Preserve the person's face, pose, hands, body proportions, and background.",
@@ -550,28 +555,31 @@ export default function Dashboard() {
                     </div>
                     <div className="grid gap-3">
                       {(qwenWorkflowQuery.data?.loras ?? [
-                        { id: "lora_1", label: "External BB — primary", filename: "external_bb-v1.220.safetensors", defaultStrength: 0.6},
-                        { id: "lora_2", label: "Vagina Fine Tune (The smaller, the tighter)", filename: "external_VSizeSlider.safetensors", defaultStrength: 0.5 },
-                        { id: "lora_3", label: "Breast Fine Tune (The smaller value, the smaller breast)", filename: "external_bslider_qwen_v1.safetensors", defaultStrength: 0.5 },
-                      ]).filter(lora => lora.id !== "lora_1").map(lora => (
-                        <label key={lora.id} className="grid gap-1 sm:grid-cols-[minmax(0,1fr)_7rem] sm:items-center">
-                          <span className="min-w-0">
-                            <span className="block text-sm font-semibold text-foreground">{lora.label}</span>
-                            <span className="block truncate text-xs text-muted-foreground" title={lora.filename}>{lora.filename}</span>
-                          </span>
-                          <input
-                            type="number"
-                            aria-label={`${lora.label} weight`}
-                            min={qwenWorkflowQuery.data?.strengthMin ?? 0}
-                            max={qwenWorkflowQuery.data?.strengthMax ?? 2}
-                            step="0.05"
-                            value={qwenLoraWeights[lora.id as QwenLoraId]}
-                            onChange={event => handleLoraWeightChange(lora.id as QwenLoraId, event.target.value)}
-                            disabled={isPhotoSelectionLocked}
-                            className="h-10 w-full rounded border border-accent/40 bg-background px-3 text-foreground outline-none focus-visible:ring-2 focus-visible:ring-secondary disabled:cursor-not-allowed disabled:opacity-60"
-                          />
-                        </label>
-                      ))}
+                        { id: "lora_1", label: QWEN_LORA_UI_LABELS.lora_1, filename: "external_bb-v1.220.safetensors", defaultStrength: 0.6},
+                        { id: "lora_2", label: QWEN_LORA_UI_LABELS.lora_2, filename: "external_VSizeSlider.safetensors", defaultStrength: 0.5 },
+                        { id: "lora_3", label: QWEN_LORA_UI_LABELS.lora_3, filename: "external_bslider_qwen_v1.safetensors", defaultStrength: 0.5 },
+                      ]).filter(lora => lora.id !== "lora_1").map(lora => {
+                        const displayLabel = QWEN_LORA_UI_LABELS[lora.id as QwenLoraId] ?? lora.label;
+                        return (
+                          <label key={lora.id} className="grid gap-1 sm:grid-cols-[minmax(0,1fr)_7rem] sm:items-center">
+                            <span className="min-w-0">
+                              <span className="block text-sm font-semibold text-foreground">{displayLabel}</span>
+                              <span className="block truncate text-xs text-muted-foreground" title={lora.filename}>{lora.filename}</span>
+                            </span>
+                            <input
+                              type="number"
+                              aria-label={`${displayLabel} weight`}
+                              min={qwenWorkflowQuery.data?.strengthMin ?? 0}
+                              max={qwenWorkflowQuery.data?.strengthMax ?? 2}
+                              step="0.05"
+                              value={qwenLoraWeights[lora.id as QwenLoraId]}
+                              onChange={event => handleLoraWeightChange(lora.id as QwenLoraId, event.target.value)}
+                              disabled={isPhotoSelectionLocked}
+                              className="h-10 w-full rounded border border-accent/40 bg-background px-3 text-foreground outline-none focus-visible:ring-2 focus-visible:ring-secondary disabled:cursor-not-allowed disabled:opacity-60"
+                            />
+                          </label>
+                        );
+                      })}
                     </div>
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <p className="text-xs text-muted-foreground">Used only for Qwen edit. Allowed range: {qwenWorkflowQuery.data?.strengthMin ?? 0}–{qwenWorkflowQuery.data?.strengthMax ?? 2}. A weight of 0 disables that approved LoRA for this task.</p>
