@@ -529,10 +529,8 @@ export default function Dashboard() {
                     <Shirt className="w-6 h-6 mx-auto mb-2" />
                     <p className="text-sm font-bold">XXX (10 Credits)</p>
                     <p className="mt-1 text-xs text-muted-foreground">Qwen edit</p>
-                  </button>
-                </div>
-                {selectedShirt === QWEN_EDIT_STYLE_ID && (
-                  <>
+                 </button>
+               </div>
                 <div className="space-y-2 border-t border-accent/20 pt-4">
                   <label htmlFor="positive-prompt" className="text-sm font-bold text-foreground">POSITIVE PROMPT <span className="text-muted-foreground">(OPTIONAL)</span></label>
                   <Textarea
@@ -544,6 +542,8 @@ export default function Dashboard() {
                   />
                   <p className="text-xs text-muted-foreground">Selecting a shirt fills its suggested prompt. The value is submitted only for the XXX Qwen ComfyUI edit.</p>
                 </div>
+                {selectedShirt === QWEN_EDIT_STYLE_ID && (
+                  <>
                 <div className="space-y-4 rounded border border-secondary/40 bg-background/40 p-4" aria-labelledby="qwen-lora-editor-title">
                     <div className="space-y-1">
                       <h3 id="qwen-lora-editor-title" className="text-sm font-bold text-secondary">QWEN WORKFLOW CONFIGURATION</h3>
