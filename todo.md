@@ -179,3 +179,9 @@
 - [x] Hide only the first displayed XXX configuration row while preserving its backend default value and submission behavior.
 - [x] Verify the remaining visible rows continue to allow supported weight editing.
 - [x] Provide the precise source file and line numbers for editing the remaining visible configuration labels.
+
+## Positive Prompt Visibility Regression
+- [x] Keep the Positive Prompt text area visible for every shirt selection, including all five standard styles.
+- [x] Add regression coverage that proves the prompt remains visible and updates for standard and XXX selections.
+- [x] Verify the restored visibility in the Dashboard preview.
+- [ ] Save a recovery checkpoint for the Positive Prompt visibility fix.

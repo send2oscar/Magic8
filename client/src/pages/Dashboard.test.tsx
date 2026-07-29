@@ -174,15 +174,20 @@ describe("Dashboard Try On Now lifecycle", () => {
     expect(mocks.toastSuccess).toHaveBeenCalledWith("Try-on completed!");
   });
 
-  it("defaults to Classic White and exposes the Qwen controls only for XXX", () => {
+  it("keeps Positive Prompt visible for every shirt while exposing Qwen controls only for XXX", () => {
     render(<Dashboard />);
     const classicWhiteButton = screen.getByRole("button", { name: "Classic White (1 Credit)" });
     expect(classicWhiteButton.className).toContain("bg-secondary/20");
-    expect(screen.queryByLabelText(/positive prompt/i)).toBeNull();
+    const classicPrompt = screen.getByLabelText(/positive prompt/i) as HTMLTextAreaElement;
+    expect(classicPrompt.value).not.toBe("");
+    const classicPromptValue = classicPrompt.value;
     expect(screen.queryByText("QwenImageEditRapidv1.0(External).json")).toBeNull();
 
     fireEvent.click(screen.getByText("Neon Pink (1 Credit)"));
-    expect(screen.queryByLabelText(/positive prompt/i)).toBeNull();
+    const neonPinkPrompt = screen.getByLabelText(/positive prompt/i) as HTMLTextAreaElement;
+    expect(neonPinkPrompt.value).not.toBe("");
+    expect(neonPinkPrompt.value).not.toBe(classicPromptValue);
+    expect(screen.queryByText("QwenImageEditRapidv1.0(External).json")).toBeNull();
 
     const xxxButton = screen.getByRole("button", { name: /XXX \(10 Credits\)/ });
     expect(xxxButton.className).toContain("xxx-button-attention");
@@ -212,7 +217,7 @@ describe("Dashboard Try On Now lifecycle", () => {
     expect(screen.getByText("LIVE TASK LOG")).toBeTruthy();
 
     fireEvent.click(screen.getByText("Neon Pink (1 Credit)"));
-    expect(screen.queryByLabelText(/positive prompt/i)).toBeNull();
+    expect(screen.getByLabelText(/positive prompt/i)).toBeTruthy();
     expect(screen.getByRole("button", { name: "Use another photo" })).toBeTruthy();
   });
 
@@ -307,7 +312,7 @@ describe("Dashboard Try On Now lifecycle", () => {
       expect(screen.queryByRole("button", { name: /use another photo/i })).toBeNull();
       expect(screen.getByRole("button", { name: "Try on now" })).toBeTruthy();
       expect(screen.getByRole("button", { name: "Classic White (1 Credit)" }).className).toContain("bg-secondary/20");
-      expect(screen.queryByLabelText(/positive prompt/i)).toBeNull();
+      expect((screen.getByLabelText(/positive prompt/i) as HTMLTextAreaElement).value).not.toBe("");
       expect(document.querySelector<HTMLInputElement>("input[type=file]")?.disabled).toBe(false);
     });
   });
