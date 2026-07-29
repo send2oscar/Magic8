@@ -20,6 +20,8 @@ jobs:
       ADMIN_USERNAME: ci-admin
       ADMIN_PASSWORD: ci-only-test-password
       ADMIN_SESSION_SECRET: ci-only-test-session-secret
+      BUBBLE_API_URL: https://magic8-78745.bubbleapps.io/version-test/api/1.1
+      BUBBLE_API_TOKEN: ci-only-placeholder-token
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -40,7 +42,7 @@ jobs:
         run: pnpm check
 
       - name: Run regression suite
-        run: pnpm test
+        run: pnpm test:ci
 
       - name: Build production bundle
         run: pnpm build

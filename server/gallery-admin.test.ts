@@ -61,11 +61,11 @@ describe("private gallery and administrator access", () => {
     mocks.getAdminUserProfile.mockResolvedValue({ id: 2, name: "User 2" });
     mocks.getUserGallery.mockResolvedValue([{ id: 202, userId: 2 }]);
     const fullError = `Bridge error:\n${"full diagnostic ".repeat(80)}END-OF-ERROR`;
-    mocks.getAdminUserTaskErrors.mockResolvedValue([{ historyId: 203, fullError }]);
+    mocks.getAdminUserTaskErrors.mockResolvedValue([{ historyId: 203, shirtStyle: "classic-white", fullError }]);
     await expect(caller.admin.listUsers()).resolves.toEqual([{ id: 2, name: "User 2" }]);
     await expect(caller.admin.userProfile({ userId: 2 })).resolves.toEqual({ id: 2, name: "User 2" });
     await expect(caller.admin.userGallery({ userId: 2 })).resolves.toEqual([{ id: 202, userId: 2 }]);
-    await expect(caller.admin.userTaskErrors({ userId: 2 })).resolves.toEqual([{ historyId: 203, fullError }]);
+    await expect(caller.admin.userTaskErrors({ userId: 2 })).resolves.toEqual([{ historyId: 203, shirtStyle: "classic-white", fullError }]);
     expect(mocks.getUserGallery).toHaveBeenLastCalledWith(2);
     expect(mocks.getAdminUserTaskErrors).toHaveBeenCalledWith(2);
   });
