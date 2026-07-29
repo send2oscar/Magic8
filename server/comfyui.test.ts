@@ -77,6 +77,26 @@ describe("direct ComfyUI connection", () => {
     await expect(getApprovedQwenOutput("task")).rejects.toThrow("failed image edit");
   });
 
+  it("normalizes a Windows-style ComfyUI output subfolder before Gallery retrieval", async () => {
+    ENV.comfyuiServerUrl = "http://oscarngan.ddns.net:8188";
+    mocks.request.mockResolvedValue(axiosResponse({
+      task: {
+        status: { status_str: "success" },
+        outputs: {
+          [QWEN_OUTPUT_NODE_ID]: {
+            images: [{ filename: "shirt_changer_qwen_2026-07-29-134317.jpg", subfolder: "qwen_edit\\2026-07-29", type: "output" }],
+          },
+        },
+      },
+    }));
+
+    await expect(getApprovedQwenOutput("task")).resolves.toEqual({
+      filename: "shirt_changer_qwen_2026-07-29-134317.jpg",
+      subfolder: "qwen_edit/2026-07-29",
+      type: "output",
+    });
+  });
+
   it("reports the prompt's truthful queued position without inventing a duration estimate", async () => {
     ENV.comfyuiServerUrl = "http://oscarngan.ddns.net:8188";
     mocks.request.mockResolvedValue(axiosResponse({
