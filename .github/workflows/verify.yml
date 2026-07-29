@@ -41,7 +41,7 @@ jobs:
       - name: Type check
         run: pnpm check
 
-      - name: Run regression suite
+      - name: Run deterministic regression suite
         run: pnpm test:ci
 
       - name: Build production bundle

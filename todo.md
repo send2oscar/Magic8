@@ -137,7 +137,7 @@
 - [x] Protect main against force-pushes and deletion, requiring pull-request-based releases.
 - [x] Verify the remote main protection policy: pull requests and linear history are required, while force-pushes and branch deletion are disabled.
 - [x] Save a recovery checkpoint for the verified workflow synchronization and protected main merge.
-- [ ] Require the successful GitHub Test status check and merge the protected safeguards and all-task error-log pull request.
+- [x] Require the successful GitHub Test status check and merge the protected safeguards and all-task error-log pull request.
 - [ ] Save a recovery checkpoint for the required-test safeguard and all-task admin error logs.
 
 ## Submitted ComfyUI Workflow Synchronization
