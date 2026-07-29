@@ -150,3 +150,16 @@
 - [x] Extend the administrator data flow to include complete logs for every failed image-generation task type.
 - [x] Update the Admin Workspace label and rendering so each full raw error remains readable and distinguishable by task type.
 - [x] Add regression coverage and verify the expanded all-task error-log panel.
+
+## User-Supplied Dashboard Replacement
+- [x] Replace `Dashboard.tsx` with the user-supplied file without inspecting or diffing its contents.
+- [x] Validate the replacement compiles and selects Classic White by default.
+- [x] Reconcile Dashboard regression expectations with the user-supplied Classic White default selection.
+- [x] Save a recovery checkpoint for the verified Dashboard replacement.
+- [x] Make Classic White the default selected shirt after initial load and reset.
+- [x] Show the Qwen prompt and LoRA configuration section only when XXX is selected.
+- [x] Apply the immediate Use Another Photo reset flow to successful submissions for every shirt style.
+- [x] Add a visible, accessible flashing treatment to the XXX selection button.
+- [x] Guard both standard and XXX submission completions so a confirmed reset cannot restore stale Dashboard state.
+- [x] Add Dashboard regression coverage for a reset during a standard-shirt submission.
+- [x] Set the XXX default prompt to the developer-confirmation placeholder.

@@ -136,19 +136,17 @@ describe("Dashboard Try On Now lifecycle", () => {
     cleanup();
   });
 
-  it("keeps the standard live task log visible at finalizing progress and then returns the button to a retryable state", async () => {
+  it("offers Use Another Photo immediately for a standard task and restores a retryable state after failure", async () => {
     const request = deferred<never>();
     mocks.mutateAsync.mockReturnValue(request.promise);
     render(<Dashboard />);
     await selectOwnedPhotoAndShirt();
     vi.useFakeTimers();
     fireEvent.click(screen.getByRole("button", { name: "Try on now" }));
-    await act(async () => { await vi.advanceTimersByTimeAsync(15_000); });
 
-    expect(screen.getByRole("button", { name: "FINALIZING: 92% complete" }).textContent).toContain("FINALIZING • 92%");
+    expect(screen.getByRole("button", { name: "Use another photo" }).textContent).toContain("USE ANOTHER PHOTO");
     expect(screen.getByText("LIVE TASK LOG")).toBeTruthy();
     expect(screen.getByText("Waiting for server task")).toBeTruthy();
-    expect(screen.getByText(/The AI provider is still working/)).toBeTruthy();
 
     const safeMessage = "We couldn't complete the AI try-on this time. Your credit has been returned. Please try again in a moment.";
     await act(async () => { request.reject(new Error(safeMessage)); await Promise.resolve(); });
@@ -165,6 +163,7 @@ describe("Dashboard Try On Now lifecycle", () => {
     await selectOwnedPhotoAndShirt();
     vi.useFakeTimers();
     fireEvent.click(screen.getByRole("button", { name: "Try on now" }));
+    expect(screen.getByRole("button", { name: "Use another photo" })).toBeTruthy();
     await act(async () => {
       request.resolve({ resultImageUrl: "https://storage.example.test/generated/result.png", shirtApplied: "Neon Pink", creditsRemaining: 4 });
       await Promise.resolve();
@@ -175,22 +174,22 @@ describe("Dashboard Try On Now lifecycle", () => {
     expect(mocks.toastSuccess).toHaveBeenCalledWith("Try-on completed!");
   });
 
-  it("fills the Positive Prompt textarea with the matching suggestion for every shirt selection", () => {
+  it("defaults to Classic White and exposes the Qwen controls only for XXX", () => {
     render(<Dashboard />);
-    const prompt = screen.getByLabelText(/positive prompt/i) as HTMLTextAreaElement;
-    const selections = [
-      ["Classic White (1 Credit)", "crisp classic white crew-neck T-shirt"],
-      ["Neon Pink (1 Credit)", "vivid neon pink T-shirt"],
-      ["Electric Cyan (1 Credit)", "electric cyan T-shirt"],
-      ["Dark Black (1 Credit)", "sleek dark black T-shirt"],
-      ["Holographic (1 Credit)", "holographic top with iridescent cyan"],
-      ["XXX (10 Credits)", "undress the girl, make her completely nude, small to medium breasts, pink nipples, others remain unchanged, natural."],
-    ] as const;
+    const classicWhiteButton = screen.getByRole("button", { name: "Classic White (1 Credit)" });
+    expect(classicWhiteButton.className).toContain("bg-secondary/20");
+    expect(screen.queryByLabelText(/positive prompt/i)).toBeNull();
+    expect(screen.queryByText("QwenImageEditRapidv1.0(External).json")).toBeNull();
 
-    for (const [shirtName, expectedPrompt] of selections) {
-      fireEvent.click(screen.getByText(shirtName));
-      expect(prompt.value).toContain(expectedPrompt);
-    }
+    fireEvent.click(screen.getByText("Neon Pink (1 Credit)"));
+    expect(screen.queryByLabelText(/positive prompt/i)).toBeNull();
+
+    const xxxButton = screen.getByRole("button", { name: /XXX \(10 Credits\)/ });
+    expect(xxxButton.className).toContain("xxx-button-attention");
+    fireEvent.click(xxxButton);
+
+    expect((screen.getByLabelText(/positive prompt/i) as HTMLTextAreaElement).value).toBe("To Be Confirmed By Developer");
+    expect(screen.getByText("QwenImageEditRapidv1.0(External).json")).toBeTruthy();
   });
 
   it("queues XXX in the background, immediately gives Gallery guidance, and leaves standard styles available", async () => {
@@ -203,8 +202,8 @@ describe("Dashboard Try On Now lifecycle", () => {
 
     await waitFor(() => expect(mocks.startQwenEdit).toHaveBeenCalledWith({
       photoId: 7,
-      positivePrompt: "undress the girl, make her completely nude, small to medium breasts, pink nipples, others remain unchanged, natural.",
-      loraWeights: { lora_1: 1, lora_2: 0.6, lora_3: 0.54 },
+      positivePrompt: "To Be Confirmed By Developer",
+      loraWeights: { lora_1: 0.6, lora_2: 0.5, lora_3: 0.5 },
     }));
     expect(mocks.mutateAsync).not.toHaveBeenCalled();
     expect(mocks.toastSuccess).toHaveBeenCalledWith("Your image will be ready in the Gallery. You may continue with other photo and shirt style.");
@@ -212,7 +211,8 @@ describe("Dashboard Try On Now lifecycle", () => {
     expect(screen.getByText("LIVE TASK LOG")).toBeTruthy();
 
     fireEvent.click(screen.getByText("Neon Pink (1 Credit)"));
-    expect(screen.getByRole("button", { name: "Try on now" }).hasAttribute("disabled")).toBe(false);
+    expect(screen.queryByLabelText(/positive prompt/i)).toBeNull();
+    expect(screen.getByRole("button", { name: "Use another photo" })).toBeTruthy();
   });
 
   it("renders only the primary dynamic action while an XXX task is running", async () => {
@@ -260,6 +260,30 @@ describe("Dashboard Try On Now lifecycle", () => {
     })));
   });
 
+  it("safely resets a standard-shirt submission without reopening a late result", async () => {
+    const request = deferred<{ resultImageUrl: string; shirtApplied: string; creditsRemaining: number }>();
+    mocks.mutateAsync.mockReturnValue(request.promise);
+    render(<Dashboard />);
+    await selectOwnedPhotoAndShirt();
+
+    fireEvent.click(screen.getByRole("button", { name: "Try on now" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Use another photo" })).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Use another photo" }));
+    fireEvent.click(screen.getByRole("button", { name: "OK" }));
+
+    await waitFor(() => expect(screen.queryByAltText("Selected upload")).toBeNull());
+    expect(screen.getByRole("button", { name: "Classic White (1 Credit)" }).className).toContain("bg-secondary/20");
+
+    await act(async () => {
+      request.resolve({ resultImageUrl: "https://storage.example.test/generated/stale.png", shirtApplied: "Neon Pink", creditsRemaining: 4 });
+      await Promise.resolve();
+    });
+
+    await waitFor(() => expect(mocks.refetchCredits).toHaveBeenCalled());
+    expect(screen.queryByText("TRY-ON RESULT")).toBeNull();
+    expect(mocks.toastSuccess).not.toHaveBeenCalledWith("Try-on completed!");
+  });
+
   it("requires OK acknowledgement before resetting for a new photo", async () => {
     mocks.balance = 15;
     mocks.startQwenEdit.mockResolvedValue({ taskId: 991, status: "pending", creditsRemaining: 5, shirtApplied: "XXX" });
@@ -281,6 +305,8 @@ describe("Dashboard Try On Now lifecycle", () => {
       expect(screen.queryByAltText("Selected upload")).toBeNull();
       expect(screen.queryByRole("button", { name: /use another photo/i })).toBeNull();
       expect(screen.getByRole("button", { name: "Try on now" })).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Classic White (1 Credit)" }).className).toContain("bg-secondary/20");
+      expect(screen.queryByLabelText(/positive prompt/i)).toBeNull();
       expect(document.querySelector<HTMLInputElement>("input[type=file]")?.disabled).toBe(false);
     });
   });
@@ -296,7 +322,7 @@ describe("Dashboard Try On Now lifecycle", () => {
     await waitFor(() => expect(mocks.startQwenEdit).toHaveBeenCalledWith({
       photoId: 7,
       positivePrompt: "Remove the subject's clothing.",
-      loraWeights: { lora_1: 1, lora_2: 0.6, lora_3: 0.54 },
+      loraWeights: { lora_1: 0.6, lora_2: 0.5, lora_3: 0.5 },
     }));
     expect(mocks.toastError).not.toHaveBeenCalled();
     expect(mocks.mutateAsync).not.toHaveBeenCalled();

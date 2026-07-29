@@ -21,14 +21,14 @@ const QWEN_EDIT_STYLE_ID = "qwen-image-edit-rapid";
 const IDLE_QWEN_TASK_ID = 1;
 type QwenLoraId = "lora_1" | "lora_2" | "lora_3";
 type QwenLoraWeights = Record<QwenLoraId, number>;
-const DEFAULT_QWEN_LORA_WEIGHTS: QwenLoraWeights = { lora_1: 1, lora_2: 0.6, lora_3: 0.54 };
+const DEFAULT_QWEN_LORA_WEIGHTS: QwenLoraWeights = { lora_1: 0.6, lora_2: 0.5, lora_3: 0.5 };
 const SHIRT_PROMPTS: Record<string, string> = {
   "classic-white": "Change the current shirt to a crisp classic white crew-neck T-shirt. Preserve the person's face, pose, hands, body proportions, and background.",
   "neon-pink": "Change the current shirt to a vivid neon pink T-shirt with realistic fabric texture and lighting. Preserve the person's face, pose, hands, body proportions, and background.",
   "electric-cyan": "Change the current shirt to an electric cyan T-shirt with realistic fabric texture and lighting. Preserve the person's face, pose, hands, body proportions, and background.",
   "dark-black": "Change the current shirt to a sleek dark black T-shirt with realistic fabric texture and lighting. Preserve the person's face, pose, hands, body proportions, and background.",
   holographic: "Change the current shirt to a holographic top with iridescent cyan, magenta, and violet reflections. Preserve the person's face, pose, hands, body proportions, and background.",
-  [QWEN_EDIT_STYLE_ID]: "undress the girl, make her completely nude, small to medium breasts, pink nipples, others remain unchanged, natural.",
+  [QWEN_EDIT_STYLE_ID]: "To Be Confirmed By Developer",
 };
 
 type SelectedPhoto = {
@@ -49,7 +49,7 @@ export default function Dashboard() {
   const { user, logout, isAuthenticated, loading } = useAuth();
   const [, setLocation] = useLocation();
   const [selectedPhoto, setSelectedPhoto] = useState<SelectedPhoto | null>(null);
-  const [selectedShirt, setSelectedShirt] = useState<string | null>(null);
+  const [selectedShirt, setSelectedShirt] = useState<string | null>("classic-white");
   const [isUploading, setIsUploading] = useState(false);
   const [isTryingOn, setIsTryingOn] = useState(false);
   const [tryOnProgress, setTryOnProgress] = useState(0);
@@ -61,7 +61,7 @@ export default function Dashboard() {
   const [localTaskStages, setLocalTaskStages] = useState<LiveTaskStage[]>([]);
   const [tryOnStartedAt, setTryOnStartedAt] = useState<number | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
-  const [positivePrompt, setPositivePrompt] = useState("");
+  const [positivePrompt, setPositivePrompt] = useState(SHIRT_PROMPTS["classic-white"]);
   const [qwenLoraWeights, setQwenLoraWeights] = useState<QwenLoraWeights>(DEFAULT_QWEN_LORA_WEIGHTS);
   const [activeQwenTaskId, setActiveQwenTaskId] = useState<number | null>(null);
   const [backgroundQwenError, setBackgroundQwenError] = useState<string | null>(null);
@@ -69,7 +69,7 @@ export default function Dashboard() {
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const hasAppliedDefaultPrompt = useRef(false);
   const notifiedTerminalQwenTaskId = useRef<number | null>(null);
-  const qwenSubmissionEpoch = useRef(0);
+  const submissionEpoch = useRef(0);
 
   // tRPC queries and mutations
   const creditsQuery = trpc.credits.getBalance.useQuery();
@@ -185,8 +185,10 @@ export default function Dashboard() {
 
   const confirmReset = () => {
     setShowResetConfirm(false);
-    qwenSubmissionEpoch.current += 1;
+    submissionEpoch.current += 1;
     setSelectedPhoto(null);
+    setSelectedShirt("classic-white");
+    setPositivePrompt(SHIRT_PROMPTS["classic-white"]);
     setHasTaskSubmissionStarted(false);
     setResultData(null);
     setShowResult(false);
@@ -308,6 +310,7 @@ export default function Dashboard() {
 
     const isQwenEdit = selectedShirt === QWEN_EDIT_STYLE_ID;
     const requiredCredits = isQwenEdit ? 10 : 1;
+    const requestEpoch = submissionEpoch.current;
 
     if ((creditsQuery.data?.balance || 0) < requiredCredits) {
       toast.error(`Insufficient credits. You need at least ${requiredCredits} credits to try on ${isQwenEdit ? "XXX" : "a shirt"}.`);
@@ -319,9 +322,8 @@ export default function Dashboard() {
       return;
     }
 
-    // Lock the current workspace as soon as a valid request is submitted.
-    // For Qwen, this deliberately enables the single "USE ANOTHER PHOTO"
-    // action before ComfyUI acknowledges the request.
+    // Lock the current workspace as soon as a valid request is submitted and
+    // expose the same reset action for every shirt workflow.
     setHasTaskSubmissionStarted(true);
     tryOnInFlight.current = true;
     setIsTryingOn(true);
@@ -331,7 +333,6 @@ export default function Dashboard() {
     ]);
     try {
       if (isQwenEdit) {
-        const submissionEpoch = qwenSubmissionEpoch.current;
         setLocalTaskStages([
           { key: "XXX request sent", label: "XXX request sent", state: "completed", timestamp: Date.now() },
           { key: "comfy_queue", label: "Sending the XXX edit to ComfyUI", state: "active", detail: "The application server is submitting the fixed Qwen workflow directly to ComfyUI.", timestamp: Date.now() },
@@ -341,7 +342,7 @@ export default function Dashboard() {
           positivePrompt,
           loraWeights: qwenLoraWeights,
         });
-        if (submissionEpoch !== qwenSubmissionEpoch.current) {
+        if (requestEpoch !== submissionEpoch.current) {
           await creditsQuery.refetch();
           return;
         }
@@ -358,6 +359,11 @@ export default function Dashboard() {
         shirtStyle: selectedShirt,
       });
 
+      if (requestEpoch !== submissionEpoch.current) {
+        await creditsQuery.refetch();
+        return;
+      }
+
       setTryOnProgress(100);
       await new Promise(resolve => window.setTimeout(resolve, 180));
       toast.success("Try-on completed!");
@@ -366,21 +372,25 @@ export default function Dashboard() {
       setResultData(result);
       setShowResult(true);
     } catch (error: any) {
-      toast.error(error?.message || "Failed to process try-on");
-      console.error(error);
-      if (isQwenEdit) setHasTaskSubmissionStarted(false);
-    } finally {
-      setIsTryingOn(false);
-      if (!isQwenEdit) {
-        setLocalTaskStages([]);
-        setHasTaskSubmissionStarted(false);
+      if (requestEpoch === submissionEpoch.current) {
+        toast.error(error?.message || "Failed to process try-on");
+        console.error(error);
+        if (isQwenEdit) setHasTaskSubmissionStarted(false);
       }
-      tryOnInFlight.current = false;
+    } finally {
+      if (requestEpoch === submissionEpoch.current) {
+        setIsTryingOn(false);
+        if (!isQwenEdit) {
+          setLocalTaskStages([]);
+          setHasTaskSubmissionStarted(false);
+        }
+        tryOnInFlight.current = false;
+      }
     }
   };
 
   const isBackgroundQwenTask = activeQwenTaskId !== null;
-  const shouldOfferAnotherPhoto = selectedShirt === QWEN_EDIT_STYLE_ID && hasTaskSubmissionStarted;
+  const shouldOfferAnotherPhoto = hasTaskSubmissionStarted;
   const hasVisibleTask = isTryingOn || isBackgroundQwenTask;
   const qwenTaskStatus = qwenEditStatusQuery.data;
   const qwenTaskStages = qwenTaskStatus && "stages" in qwenTaskStatus && Array.isArray(qwenTaskStatus.stages)
@@ -510,7 +520,7 @@ export default function Dashboard() {
                   <button
                     key={QWEN_EDIT_STYLE_ID}
                     onClick={() => handleShirtSelection(QWEN_EDIT_STYLE_ID)}
-                    className={`p-4 rounded border-2 transition text-center ${
+                    className={`xxx-button-attention p-4 rounded border-2 transition text-center ${
                       selectedShirt === QWEN_EDIT_STYLE_ID
                         ? "border-secondary bg-secondary/20"
                         : "border-accent/50 hover:border-accent"
@@ -521,6 +531,8 @@ export default function Dashboard() {
                     <p className="mt-1 text-xs text-muted-foreground">Qwen edit</p>
                   </button>
                 </div>
+                {selectedShirt === QWEN_EDIT_STYLE_ID && (
+                  <>
                 <div className="space-y-2 border-t border-accent/20 pt-4">
                   <label htmlFor="positive-prompt" className="text-sm font-bold text-foreground">POSITIVE PROMPT <span className="text-muted-foreground">(OPTIONAL)</span></label>
                   <Textarea
@@ -534,17 +546,14 @@ export default function Dashboard() {
                 </div>
                 <div className="space-y-4 rounded border border-secondary/40 bg-background/40 p-4" aria-labelledby="qwen-lora-editor-title">
                     <div className="space-y-1">
-                      <p id="qwen-lora-editor-title" className="text-sm font-bold neon-cyan">QWEN LORA WEIGHTS</p>
-                      <p className="text-xs text-muted-foreground">Workflow file</p>
-                      <code className="block break-all rounded bg-background px-2 py-1 text-xs text-foreground">
-                        {qwenWorkflowQuery.data?.fileName ?? "QwenImageEditRapidv1.0(External).json"}
-                      </code>
+                      <h3 id="qwen-lora-editor-title" className="text-sm font-bold text-secondary">QWEN WORKFLOW CONFIGURATION</h3>
+                      <p className="text-xs text-muted-foreground">{qwenWorkflowQuery.data?.fileName ?? "Approved Qwen workflow"}</p>
                     </div>
                     <div className="grid gap-3">
                       {(qwenWorkflowQuery.data?.loras ?? [
-                        { id: "lora_1", label: "External BB — primary", filename: "external_bb-v1.220.safetensors", defaultStrength: 1 },
-                        { id: "lora_2", label: "External VSize Slider", filename: "external_VSizeSlider.safetensors", defaultStrength: 0.6 },
-                        { id: "lora_3", label: "External B Slider", filename: "external_bslider_qwen_v1.safetensors", defaultStrength: 0.54 },
+                        { id: "lora_1", label: "External BB — primary", filename: "external_bb-v1.220.safetensors", defaultStrength: 0.6},
+                        { id: "lora_2", label: "Vagina Fine Tune (The smaller, the tighter)", filename: "external_VSizeSlider.safetensors", defaultStrength: 0.5 },
+                        { id: "lora_3", label: "Breast Fine Tune (The smaller value, the smaller breast)", filename: "external_bslider_qwen_v1.safetensors", defaultStrength: 0.5 },
                       ]).map(lora => (
                         <label key={lora.id} className="grid gap-1 sm:grid-cols-[minmax(0,1fr)_7rem] sm:items-center">
                           <span className="min-w-0">
@@ -572,6 +581,8 @@ export default function Dashboard() {
                       </Button>
                     </div>
                 </div>
+                  </>
+                )}
               </div>
             </Card>
 
