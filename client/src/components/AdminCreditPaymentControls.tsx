@@ -123,7 +123,7 @@ export function AdminCreditPaymentControls() {
       <Card className="hud-frame bg-card/50 p-6">
         <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
           <div className="flex items-center gap-2"><Settings2 className="h-5 w-5 text-secondary" /><div><h2 className="font-bold">CREDIT POLICY</h2><p className="mt-1 text-xs text-muted-foreground">All values are enforced by the server. Credits are deducted only after a successful generation.</p></div></div>
-          <span className="rounded border border-secondary/50 bg-secondary/10 px-2 py-1 text-xs font-semibold text-secondary">PAYPAL SANDBOX</span>
+          <span className="rounded border border-secondary/50 bg-secondary/10 px-2 py-1 text-xs font-semibold text-secondary">PAYPAL LIVE</span>
         </div>
         {policy.isLoading ? <div className="flex justify-center p-6"><LoaderCircle className="h-5 w-5 animate-spin text-accent" /></div> : policy.isError || !policy.data ? <p className="text-sm text-destructive">Unable to load the administrator credit policy.</p> : (
           <form onSubmit={submitPolicy} className="space-y-4">
@@ -152,7 +152,7 @@ export function AdminCreditPaymentControls() {
       </Card>
 
       <Card className="hud-frame bg-card/50 p-6">
-        <div className="mb-5 flex items-center gap-2"><ReceiptText className="h-5 w-5 text-accent" /><div><h2 className="font-bold">PAYPAL PAYMENT RECORDS</h2><p className="mt-1 text-xs text-muted-foreground">Return-page capture records, including incomplete and failed Sandbox checkouts.</p></div></div>
+        <div className="mb-5 flex items-center gap-2"><ReceiptText className="h-5 w-5 text-accent" /><div><h2 className="font-bold">PAYPAL PAYMENT RECORDS</h2><p className="mt-1 text-xs text-muted-foreground">Return-page capture records, including incomplete and failed PayPal checkouts.</p></div></div>
         {payments.isLoading ? <div className="flex justify-center p-6"><LoaderCircle className="h-5 w-5 animate-spin text-accent" /></div> : payments.isError ? <p className="text-sm text-destructive">Unable to load PayPal payment records.</p> : payments.data?.length ? (
           <div className="overflow-x-auto rounded border border-accent/25">
             <table className="w-full min-w-[1080px] text-left text-sm">

@@ -1,28 +1,28 @@
 import { describe, expect, it, vi } from "vitest";
-import { captureSandboxPaypalOrder, createSandboxPaypalOrder, PayPalRequestError } from "./paypal";
+import { capturePaypalOrder, createPaypalOrder, PayPalRequestError } from "./paypal";
 
-describe("PayPal Sandbox order creation", () => {
-  it("creates an approved USD order with an exact server-calculated amount", async () => {
+describe("PayPal Live order creation", () => {
+  it("creates an approved USD order with an exact server-calculated amount through the Live API", async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
       calls.push({ url, init });
       if (url.endsWith("/v1/oauth2/token")) {
-        return { ok: true, status: 200, json: async () => ({ access_token: "sandbox-token" }) } as Response;
+        return { ok: true, status: 200, json: async () => ({ access_token: "live-token" }) } as Response;
       }
       return {
         ok: true,
         status: 201,
-        json: async () => ({ id: "ORDER-12345678", links: [{ rel: "payer-action", href: "https://www.sandbox.paypal.com/checkoutnow?token=ORDER-12345678" }] }),
+        json: async () => ({ id: "ORDER-12345678", links: [{ rel: "payer-action", href: "https://www.paypal.com/checkoutnow?token=ORDER-12345678" }] }),
       } as Response;
     });
     const previousId = process.env.VITE_PAYPAL_CLIENT_ID;
     const previousSecret = process.env.PAYPAL_CLIENT_SECRET;
-    process.env.VITE_PAYPAL_CLIENT_ID = "sandbox-client";
-    process.env.PAYPAL_CLIENT_SECRET = "sandbox-secret";
+    process.env.VITE_PAYPAL_CLIENT_ID = "live-client";
+    process.env.PAYPAL_CLIENT_SECRET = "live-secret";
     vi.stubGlobal("fetch", fetchMock);
 
     try {
-      await expect(createSandboxPaypalOrder({
+      await expect(createPaypalOrder({
         amountCents: 1000,
         description: "100 credits",
         returnUrl: "https://app.example/dashboard?paypal=return",
@@ -32,6 +32,8 @@ describe("PayPal Sandbox order creation", () => {
       })).resolves.toMatchObject({ orderId: "ORDER-12345678" });
 
       const orderCall = calls.find((call) => call.url.endsWith("/v2/checkout/orders"));
+      expect(calls[0]?.url).toBe("https://api-m.paypal.com/v1/oauth2/token");
+      expect(orderCall?.url).toBe("https://api-m.paypal.com/v2/checkout/orders");
       expect(JSON.parse(String(orderCall?.init?.body))).toMatchObject({
         intent: "CAPTURE",
         purchase_units: [{ amount: { currency_code: "USD", value: "10.00" } }],
@@ -44,7 +46,7 @@ describe("PayPal Sandbox order creation", () => {
   });
 
   it("rejects a non-HTTP return URL before creating an order", async () => {
-    await expect(createSandboxPaypalOrder({
+    await expect(createPaypalOrder({
       amountCents: 1000,
       description: "100 credits",
       returnUrl: "javascript:alert(1)",
@@ -54,12 +56,12 @@ describe("PayPal Sandbox order creation", () => {
     })).rejects.toBeInstanceOf(PayPalRequestError);
   });
 
-  it("accepts only a completed USD capture and returns exact integer cents", async () => {
+  it("accepts only a completed USD capture and returns exact integer cents through the Live API", async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
       calls.push({ url, init });
       if (url.endsWith("/v1/oauth2/token")) {
-        return { ok: true, status: 200, json: async () => ({ access_token: "sandbox-token" }) } as Response;
+        return { ok: true, status: 200, json: async () => ({ access_token: "live-token" }) } as Response;
       }
       return {
         ok: true,
@@ -73,13 +75,15 @@ describe("PayPal Sandbox order creation", () => {
     });
     const previousId = process.env.VITE_PAYPAL_CLIENT_ID;
     const previousSecret = process.env.PAYPAL_CLIENT_SECRET;
-    process.env.VITE_PAYPAL_CLIENT_ID = "sandbox-client";
-    process.env.PAYPAL_CLIENT_SECRET = "sandbox-secret";
+    process.env.VITE_PAYPAL_CLIENT_ID = "live-client";
+    process.env.PAYPAL_CLIENT_SECRET = "live-secret";
     vi.stubGlobal("fetch", fetchMock);
 
     try {
-      await expect(captureSandboxPaypalOrder("ORDER-12345678")).resolves.toEqual({ captureId: "CAPTURE-12345678", capturedAmountCents: 1000 });
+      await expect(capturePaypalOrder("ORDER-12345678")).resolves.toEqual({ captureId: "CAPTURE-12345678", capturedAmountCents: 1000 });
       const captureCall = calls.find((call) => call.url.endsWith("/v2/checkout/orders/ORDER-12345678/capture"));
+      expect(calls[0]?.url).toBe("https://api-m.paypal.com/v1/oauth2/token");
+      expect(captureCall?.url).toBe("https://api-m.paypal.com/v2/checkout/orders/ORDER-12345678/capture");
       expect(captureCall?.init).toMatchObject({ method: "POST", body: "{}" });
     } finally {
       process.env.VITE_PAYPAL_CLIENT_ID = previousId;

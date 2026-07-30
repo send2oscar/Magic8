@@ -16,8 +16,8 @@ const mocks = vi.hoisted(() => ({
   getAdminPaypalPayments: vi.fn(),
   saveAdminCreditPackage: vi.fn(),
   updateCreditPolicy: vi.fn(),
-  createSandboxPaypalOrder: vi.fn(),
-  captureSandboxPaypalOrder: vi.fn(),
+  createPaypalOrder: vi.fn(),
+  capturePaypalOrder: vi.fn(),
   saveUserPhoto: vi.fn(),
   getUserPhotos: vi.fn(),
   saveTryOnHistory: vi.fn(),
@@ -76,8 +76,9 @@ vi.mock("./tryOnSource", () => ({
 
 vi.mock("./paypal", () => ({
   PayPalRequestError: class PayPalRequestError extends Error {},
-  createSandboxPaypalOrder: mocks.createSandboxPaypalOrder,
-  captureSandboxPaypalOrder: mocks.captureSandboxPaypalOrder,
+  PayPalCapturePendingError: class PayPalCapturePendingError extends Error {},
+  createPaypalOrder: mocks.createPaypalOrder,
+  capturePaypalOrder: mocks.capturePaypalOrder,
 }));
 
 import { appRouter } from "./routers";
@@ -303,12 +304,12 @@ describe("Try-On Flow", () => {
     it("creates an order and payment record with the server-calculated package amount", async () => {
       mocks.getCreditPackageById.mockResolvedValue({ id: 4, credits: 100, status: "active", sortOrder: 0 });
       mocks.getCreditPolicy.mockResolvedValue({ id: 1, standardTryOnCredits: 1, xxxTryOnCredits: 10, priceCentsPerTenCredits: 100 });
-      mocks.createSandboxPaypalOrder.mockResolvedValue({ orderId: "ORDER-12345678", approvalUrl: "https://sandbox.paypal.example/checkout?token=ORDER-12345678" });
+      mocks.createPaypalOrder.mockResolvedValue({ orderId: "ORDER-12345678", approvalUrl: "https://www.paypal.com/checkoutnow?token=ORDER-12345678" });
       mocks.createPaypalPaymentRecord.mockResolvedValue({ id: 8, orderId: "ORDER-12345678", status: "created" });
 
       const result = await appRouter.createCaller(createAuthContext(7)).payments.createPaypalOrder({ packageId: 4 });
 
-      expect(mocks.createSandboxPaypalOrder).toHaveBeenCalledWith(expect.objectContaining({
+      expect(mocks.createPaypalOrder).toHaveBeenCalledWith(expect.objectContaining({
         amountCents: 1000,
         description: "100 application credits",
         userId: 7,
@@ -326,6 +327,15 @@ describe("Try-On Flow", () => {
       expect(result).toMatchObject({ orderId: "ORDER-12345678", creditAmount: 100, amountCents: 1000, amountUsd: "10.00" });
     });
 
+    it("returns a client-readable non-5xx tRPC error when PayPal cannot start checkout", async () => {
+      mocks.getCreditPackageById.mockResolvedValue({ id: 4, credits: 100, status: "active", sortOrder: 0 });
+      mocks.getCreditPolicy.mockResolvedValue({ id: 1, standardTryOnCredits: 1, xxxTryOnCredits: 10, priceCentsPerTenCredits: 100 });
+      mocks.createPaypalOrder.mockRejectedValue(new Error("PayPal API was unavailable."));
+
+      await expect(appRouter.createCaller(createAuthContext(7)).payments.createPaypalOrder({ packageId: 4 }))
+        .rejects.toMatchObject({ code: "PRECONDITION_FAILED", message: "PayPal could not start checkout. Please try again." });
+    });
+
     it("rejects a checkout request whose Origin does not match the application host", async () => {
       const context = createAuthContext(7);
       context.req = {
@@ -334,21 +344,21 @@ describe("Try-On Flow", () => {
       } as TrpcContext["req"];
 
       await expect(appRouter.createCaller(context).payments.createPaypalOrder({ packageId: 4 })).rejects.toMatchObject({ code: "BAD_REQUEST" });
-      expect(mocks.createSandboxPaypalOrder).not.toHaveBeenCalled();
+      expect(mocks.createPaypalOrder).not.toHaveBeenCalled();
     });
 
     it("captures a user-owned payment once and returns an idempotent result on the repeated return-page request", async () => {
       mocks.getPaypalPaymentForUser
         .mockResolvedValueOnce({ orderId: "ORDER-12345678", status: "created", creditAmount: 100 })
         .mockResolvedValueOnce({ orderId: "ORDER-12345678", status: "completed", creditAmount: 100 });
-      mocks.captureSandboxPaypalOrder.mockResolvedValue({ captureId: "CAPTURE-12345678", capturedAmountCents: 1000 });
+      mocks.capturePaypalOrder.mockResolvedValue({ captureId: "CAPTURE-12345678", capturedAmountCents: 1000 });
       mocks.fulfillPaypalPayment.mockResolvedValue({ status: "completed", creditAmount: 100 });
       const caller = appRouter.createCaller(createAuthContext(7));
 
       await expect(caller.payments.capturePaypalOrder({ orderId: "ORDER-12345678" })).resolves.toEqual({ status: "completed", creditAmount: 100 });
       await expect(caller.payments.capturePaypalOrder({ orderId: "ORDER-12345678" })).resolves.toEqual({ status: "already_completed", creditAmount: 100 });
 
-      expect(mocks.captureSandboxPaypalOrder).toHaveBeenCalledTimes(1);
+      expect(mocks.capturePaypalOrder).toHaveBeenCalledTimes(1);
       expect(mocks.fulfillPaypalPayment).toHaveBeenCalledTimes(1);
       expect(mocks.fulfillPaypalPayment).toHaveBeenCalledWith({
         userId: 7,

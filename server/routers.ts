@@ -71,7 +71,7 @@ import {
   QWEN_WORKFLOW_FILE_NAME,
 } from "./comfyuiQwenWorkflow";
 import { calculatePackagePriceCents, formatUsdFromCents } from "./creditPolicy";
-import { captureSandboxPaypalOrder, createSandboxPaypalOrder, PayPalCapturePendingError, PayPalRequestError } from "./paypal";
+import { capturePaypalOrder, createPaypalOrder, PayPalCapturePendingError, PayPalRequestError } from "./paypal";
 
 // Shirt styles available for try-on
 const SHIRT_STYLES = [
@@ -393,7 +393,7 @@ export const appRouter = router({
         const origin = getRequestOrigin(ctx.req);
         let createdOrder: { orderId: string; approvalUrl: string };
         try {
-          createdOrder = await createSandboxPaypalOrder({
+          createdOrder = await createPaypalOrder({
             amountCents,
             description: `${creditPackage.credits} application credits`,
             returnUrl: `${origin}/dashboard?paypal=return`,
@@ -402,10 +402,12 @@ export const appRouter = router({
             packageId: creditPackage.id,
           });
         } catch (error) {
-          console.error("[PayPal] Failed to create Sandbox order", { userId: ctx.user.id, packageId: creditPackage.id, error: error instanceof Error ? error.message : "unknown" });
+          console.error("[PayPal] Failed to create order", { userId: ctx.user.id, packageId: creditPackage.id, error: error instanceof Error ? error.message : "unknown" });
           throw new TRPCError({
-            code: "BAD_GATEWAY",
-            message: error instanceof PayPalRequestError ? error.message : "PayPal Sandbox could not start checkout. Please try again.",
+            // Keep checkout failures on a non-5xx status. The hosting proxy can
+            // replace upstream 5xx bodies with HTML, which breaks tRPC parsing.
+            code: "PRECONDITION_FAILED",
+            message: error instanceof PayPalRequestError ? error.message : "PayPal could not start checkout. Please try again.",
           });
         }
         const payment = await createPaypalPaymentRecord({
@@ -417,7 +419,7 @@ export const appRouter = router({
         });
         if (!payment) {
           console.error("[PayPal] Created remote order without local payment record", { orderId: createdOrder.orderId, userId: ctx.user.id });
-          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "The checkout record could not be prepared. No credits were granted; please start a new checkout." });
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "The checkout record could not be prepared. No credits were granted; please start a new checkout." });
         }
         return {
           orderId: createdOrder.orderId,
@@ -439,7 +441,7 @@ export const appRouter = router({
           throw new TRPCError({ code: "PRECONDITION_FAILED", message: "This PayPal checkout is no longer eligible for capture. Start a new purchase if you still need credits." });
         }
         try {
-          const capture = await captureSandboxPaypalOrder(input.orderId);
+          const capture = await capturePaypalOrder(input.orderId);
           const fulfilled = await fulfillPaypalPayment({
             userId: ctx.user.id,
             orderId: input.orderId,
@@ -464,10 +466,10 @@ export const appRouter = router({
               failureDetail: error.message,
             });
             if (!recorded) {
-              console.error("[PayPal] Pending Sandbox capture could not be persisted", { userId: ctx.user.id, orderId: input.orderId, error: error.message });
-              throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "PayPal reported a pending capture, but the payment ledger could not be updated. No credits were added; please contact an administrator." });
+              console.error("[PayPal] Pending capture could not be persisted", { userId: ctx.user.id, orderId: input.orderId, error: error.message });
+              throw new TRPCError({ code: "PRECONDITION_FAILED", message: "PayPal reported a pending capture, but the payment ledger could not be updated. No credits were added; please contact an administrator." });
             }
-            console.warn("[PayPal] Sandbox capture pending", {
+            console.warn("[PayPal] Capture pending", {
               userId: ctx.user.id,
               orderId: input.orderId,
               captureId: error.details.captureId,
@@ -483,9 +485,9 @@ export const appRouter = router({
             "failed",
             error instanceof Error ? error.message : "PayPal capture failed.",
           );
-          console.error("[PayPal] Sandbox capture failed", { userId: ctx.user.id, orderId: input.orderId, error: error instanceof Error ? error.message : "unknown" });
+          console.error("[PayPal] Capture failed", { userId: ctx.user.id, orderId: input.orderId, error: error instanceof Error ? error.message : "unknown" });
           throw new TRPCError({
-            code: "BAD_GATEWAY",
+            code: "PRECONDITION_FAILED",
             message: error instanceof PayPalRequestError ? error.message : "PayPal could not confirm this checkout. No credits were granted.",
           });
         }

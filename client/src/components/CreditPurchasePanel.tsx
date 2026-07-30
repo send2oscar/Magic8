@@ -93,10 +93,10 @@ export function CreditPurchasePanel({ onCreditsChanged }: CreditPurchasePanelPro
   const startCheckout = async (packageId: number) => {
     try {
       const checkout = await createOrder.mutateAsync({ packageId });
-      toast.message(`Opening PayPal Sandbox for ${checkout.creditAmount} credits.`);
+      toast.message(`Opening PayPal checkout for ${checkout.creditAmount} credits.`);
       window.location.assign(checkout.approvalUrl);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "PayPal Sandbox could not start checkout.";
+      const message = error instanceof Error ? error.message : "PayPal could not start checkout.";
       toast.error(message);
     }
   };
@@ -111,15 +111,15 @@ export function CreditPurchasePanel({ onCreditsChanged }: CreditPurchasePanelPro
             <PlusCircle className="h-5 w-5 text-secondary" />
             <h2 id="credit-purchase-heading" className="text-2xl font-bold neon-cyan">ADD CREDITS</h2>
           </div>
-          <p className="mt-2 text-sm text-muted-foreground">Purchase an administrator-configured package through PayPal Sandbox. Credits are added only after the server confirms payment.</p>
+          <p className="mt-2 text-sm text-muted-foreground">Purchase an administrator-configured package through PayPal. Credits are added only after the server confirms a completed payment.</p>
         </div>
-        <span className="inline-flex items-center gap-1 rounded border border-secondary/50 bg-secondary/10 px-2 py-1 text-xs font-semibold text-secondary"><ShieldCheck className="h-3.5 w-3.5" /> SANDBOX</span>
+        <span className="inline-flex items-center gap-1 rounded border border-secondary/50 bg-secondary/10 px-2 py-1 text-xs font-semibold text-secondary"><ShieldCheck className="h-3.5 w-3.5" /> PAYPAL LIVE</span>
       </div>
 
       {pendingCapture ? (
         <div role="alert" className="mt-5 rounded border border-accent/50 bg-accent/10 p-4 text-sm text-foreground">
           <p className="whitespace-pre-wrap break-words font-medium">{pendingCapture.message}</p>
-          <p className="mt-2 text-xs text-muted-foreground">After the administrator resolves the PayPal Sandbox account issue, retry confirmation. Credits remain unavailable until PayPal returns a completed capture.</p>
+          <p className="mt-2 text-xs text-muted-foreground">After the PayPal account issue is resolved, retry confirmation. Credits remain unavailable until PayPal returns a completed capture.</p>
           <Button type="button" variant="outline" onClick={retryPendingCapture} disabled={captureOrder.isPending} className="mt-3 border-accent/60 text-accent">
             {captureOrder.isPending ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <ShieldCheck className="mr-2 h-4 w-4" />}
             RETRY PAYPAL CONFIRMATION

@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CreditPurchasePanel } from "./CreditPurchasePanel";
 
 const mocks = vi.hoisted(() => ({
+  createMutate: vi.fn(),
   captureMutate: vi.fn(),
   cancelMutate: vi.fn(),
   invalidatePackages: vi.fn(),
@@ -30,7 +31,7 @@ vi.mock("@/lib/trpc", () => ({
           isError: false,
         }),
       },
-      createPaypalOrder: { useMutation: () => ({ mutateAsync: vi.fn(), isPending: false }) },
+      createPaypalOrder: { useMutation: () => ({ mutateAsync: mocks.createMutate, isPending: false }) },
       capturePaypalOrder: { useMutation: () => ({ mutate: mocks.captureMutate, isPending: false }) },
       cancelPaypalOrder: { useMutation: () => ({ mutate: mocks.cancelMutate, isPending: false }) },
     },
@@ -46,6 +47,7 @@ vi.mock("sonner", () => ({ toast: { error: mocks.toastError, message: mocks.toas
 
 describe("CreditPurchasePanel", () => {
   beforeEach(() => {
+    mocks.createMutate.mockReset();
     mocks.captureMutate.mockReset();
     mocks.cancelMutate.mockReset();
     mocks.invalidatePackages.mockReset().mockResolvedValue(undefined);
@@ -72,6 +74,19 @@ describe("CreditPurchasePanel", () => {
     expect(screen.getByText("$10.00 USD")).toBeTruthy();
     expect(screen.getByText("$50.00 USD")).toBeTruthy();
     expect(screen.getByText("$100.00 USD")).toBeTruthy();
+    expect(screen.getByText("PAYPAL LIVE")).toBeTruthy();
+    expect(screen.queryByText(/sandbox/i)).toBeNull();
+  });
+
+  it("shows the typed checkout-start failure instead of a generic response parsing error", async () => {
+    mocks.createMutate.mockRejectedValue(new Error("PayPal Live credentials could not be verified."));
+    render(<CreditPurchasePanel />);
+
+    await act(async () => {
+      screen.getAllByRole("button", { name: "BUY PACKAGE" })[0]?.click();
+    });
+
+    await waitFor(() => expect(mocks.toastError).toHaveBeenCalledWith("PayPal Live credentials could not be verified."));
   });
 
   it("captures a returned PayPal order once and refreshes the visible credit state", async () => {

@@ -1,7 +1,11 @@
 import { createHash } from "node:crypto";
 import { formatUsdFromCents } from "./creditPolicy";
 
-const PAYPAL_SANDBOX_API_BASE = "https://api-m.sandbox.paypal.com";
+/**
+ * The project uses the confirmed PayPal Live application credentials. Keep this
+ * explicit so those credentials can never be sent to a different PayPal environment host.
+ */
+const PAYPAL_API_BASE = "https://api-m.paypal.com";
 
 export class PayPalRequestError extends Error {
   constructor(message: string, readonly status?: number) {
@@ -22,7 +26,7 @@ export class PayPalCapturePendingError extends PayPalRequestError {
   constructor(readonly details: PayPalCapturePendingDetails) {
     const reasonText = details.reason ? ` (reason: ${details.reason})` : "";
     const remediation = details.reason === "UNILATERAL"
-      ? " The receiving PayPal Sandbox merchant email is not registered or confirmed. An administrator must confirm that receiving Sandbox account before retrying confirmation."
+      ? " The receiving PayPal merchant account needs attention before confirmation can be retried."
       : " PayPal must complete this capture before credits can be added; retry confirmation later.";
     super(`PayPal capture is still ${details.captureStatus ?? "pending"}${reasonText}. No credits were added.${remediation}`, 409);
     this.name = "PayPalCapturePendingError";
@@ -48,7 +52,7 @@ function getPayPalCredentials() {
   const clientId = process.env.VITE_PAYPAL_CLIENT_ID?.trim();
   const clientSecret = process.env.PAYPAL_CLIENT_SECRET?.trim();
   if (!clientId || !clientSecret) {
-    throw new PayPalRequestError("PayPal Sandbox is not configured. An administrator must add the Sandbox credentials before checkout can begin.");
+    throw new PayPalRequestError("PayPal is not configured. An administrator must add the PayPal Live credentials before checkout can begin.");
   }
   return { clientId, clientSecret };
 }
@@ -57,10 +61,10 @@ function asNonEmptyString(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value : null;
 }
 
-async function getSandboxAccessToken(fetcher: typeof fetch = fetch) {
+async function getPayPalAccessToken(fetcher: typeof fetch = fetch) {
   const { clientId, clientSecret } = getPayPalCredentials();
   const authorization = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
-  const response = await fetcher(`${PAYPAL_SANDBOX_API_BASE}/v1/oauth2/token`, {
+  const response = await fetcher(`${PAYPAL_API_BASE}/v1/oauth2/token`, {
     method: "POST",
     headers: {
       Authorization: `Basic ${authorization}`,
@@ -72,14 +76,14 @@ async function getSandboxAccessToken(fetcher: typeof fetch = fetch) {
   const body = await response.json().catch(() => null) as { access_token?: unknown; error_description?: unknown } | null;
   const token = asNonEmptyString(body?.access_token);
   if (!response.ok || !token) {
-    throw new PayPalRequestError("PayPal Sandbox credentials could not be verified. Check the configured Client ID and Client Secret.", response.status);
+    throw new PayPalRequestError("PayPal Live credentials could not be verified. Check the configured Client ID and Client Secret.", response.status);
   }
   return token;
 }
 
-async function sandboxApiRequest(path: string, init: RequestInit, fetcher: typeof fetch = fetch) {
-  const token = await getSandboxAccessToken(fetcher);
-  const response = await fetcher(`${PAYPAL_SANDBOX_API_BASE}${path}`, {
+async function paypalApiRequest(path: string, init: RequestInit, fetcher: typeof fetch = fetch) {
+  const token = await getPayPalAccessToken(fetcher);
+  const response = await fetcher(`${PAYPAL_API_BASE}${path}`, {
     ...init,
     headers: {
       Authorization: `Bearer ${token}`,
@@ -90,7 +94,7 @@ async function sandboxApiRequest(path: string, init: RequestInit, fetcher: typeo
   });
   const body = await response.json().catch(() => null) as PayPalOrderResponse | null;
   if (!response.ok || !body) {
-    throw new PayPalRequestError("PayPal Sandbox could not complete this checkout request. Please try again.", response.status);
+    throw new PayPalRequestError("PayPal could not complete this checkout request. Please try again.", response.status);
   }
   return body;
 }
@@ -108,7 +112,7 @@ function assertHttpsHttpUrl(value: string, label: string) {
   return parsed.toString();
 }
 
-export async function createSandboxPaypalOrder(input: {
+export async function createPaypalOrder(input: {
   amountCents: number;
   description: string;
   returnUrl: string;
@@ -119,7 +123,7 @@ export async function createSandboxPaypalOrder(input: {
   const amount = formatUsdFromCents(input.amountCents);
   const returnUrl = assertHttpsHttpUrl(input.returnUrl, "PayPal return URL");
   const cancelUrl = assertHttpsHttpUrl(input.cancelUrl, "PayPal cancel URL");
-  const body = await sandboxApiRequest("/v2/checkout/orders", {
+  const body = await paypalApiRequest("/v2/checkout/orders", {
     method: "POST",
     body: JSON.stringify({
       intent: "CAPTURE",
@@ -145,16 +149,16 @@ export async function createSandboxPaypalOrder(input: {
   const approvalUrl = body.links?.find((link) => link.rel === "payer-action" || link.rel === "approve");
   const approvalHref = asNonEmptyString(approvalUrl?.href);
   if (!orderId || !approvalHref) {
-    throw new PayPalRequestError("PayPal Sandbox did not return an approval link for this order.");
+    throw new PayPalRequestError("PayPal did not return an approval link for this order.");
   }
   return { orderId, approvalUrl: approvalHref };
 }
 
-export async function captureSandboxPaypalOrder(orderId: string) {
+export async function capturePaypalOrder(orderId: string) {
   if (!/^[A-Z0-9-]{8,127}$/i.test(orderId)) {
     throw new PayPalRequestError("The PayPal order reference is invalid.");
   }
-  const body = await sandboxApiRequest(`/v2/checkout/orders/${encodeURIComponent(orderId)}/capture`, {
+  const body = await paypalApiRequest(`/v2/checkout/orders/${encodeURIComponent(orderId)}/capture`, {
     method: "POST",
     body: "{}",
     headers: {

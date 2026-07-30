@@ -257,3 +257,8 @@
 - [x] Update the PayPal Live account application client ID and client secret through managed project secrets.
 - [x] Validate the new PayPal Live credentials with the existing credential test without creating an order or capture (test now auto-detects Live/Sandbox endpoints).
 - [x] Save a checkpoint containing the verified PayPal Live account configuration.
+- [x] Trace the Buy Package request that returns an HTML document instead of the expected typed tRPC JSON response.
+- [x] Correct the PayPal Live checkout-start path so it returns a typed JSON checkout response or a clear actionable error.
+- [x] Add regression coverage for the checkout-start response and verify the Buy Package flow does not issue credits before a completed capture.
+- [ ] Save a checkpoint containing the verified Buy Package error correction.
+- [x] Replace the remaining Sandbox-only PayPal checkout integration with the confirmed Live API path and preserve typed client-visible checkout errors.
