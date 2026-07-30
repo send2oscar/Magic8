@@ -260,5 +260,5 @@
 - [x] Trace the Buy Package request that returns an HTML document instead of the expected typed tRPC JSON response.
 - [x] Correct the PayPal Live checkout-start path so it returns a typed JSON checkout response or a clear actionable error.
 - [x] Add regression coverage for the checkout-start response and verify the Buy Package flow does not issue credits before a completed capture.
-- [ ] Save a checkpoint containing the verified Buy Package error correction.
+- [x] Save a checkpoint containing the verified Buy Package error correction.
 - [x] Replace the remaining Sandbox-only PayPal checkout integration with the confirmed Live API path and preserve typed client-visible checkout errors.
