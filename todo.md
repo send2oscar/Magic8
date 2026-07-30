@@ -254,3 +254,9 @@
 - [x] Add a fixed USD 0.10 package that grants exactly 1 credit, with server-side package and amount validation.
 - [x] Verify the 1-credit package renders in the purchase UI and cannot grant credits before a completed PayPal capture.
 - [x] Audit the end-to-end ComfyUI prompt flow: the Dashboard positive prompt is forwarded unchanged to the approved Qwen node, while the server-owned workflow adds a fixed negative prompt and never removes user-entered text.
+- [ ] Update the PayPal Live account application client ID and client secret through managed project secrets.
+- [ ] Validate the new PayPal Live credentials with the existing credential test without creating an order or capture.
+- [ ] Save a checkpoint containing the verified PayPal Live account configuration.
+- [x] Update the PayPal Live account application client ID and client secret through managed project secrets.
+- [x] Validate the new PayPal Live credentials with the existing credential test without creating an order or capture (test now auto-detects Live/Sandbox endpoints).
+- [ ] Save a checkpoint containing the verified PayPal Live account configuration.
