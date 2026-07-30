@@ -21,6 +21,7 @@ vi.mock("@/lib/trpc", () => ({
       packages: {
         useQuery: () => ({
           data: [
+            { id: 4, credits: 1, priceCents: 10 },
             { id: 1, credits: 100, priceCents: 1000 },
             { id: 2, credits: 500, priceCents: 5000 },
             { id: 3, credits: 1000, priceCents: 10000 },
@@ -63,9 +64,11 @@ describe("CreditPurchasePanel", () => {
   it("shows the server-priced fixed packages", () => {
     render(<CreditPurchasePanel />);
 
+    expect(screen.getByText("1")).toBeTruthy();
     expect(screen.getByText("100")).toBeTruthy();
     expect(screen.getByText("500")).toBeTruthy();
     expect(screen.getByText("1000")).toBeTruthy();
+    expect(screen.getByText("$0.10 USD")).toBeTruthy();
     expect(screen.getByText("$10.00 USD")).toBeTruthy();
     expect(screen.getByText("$50.00 USD")).toBeTruthy();
     expect(screen.getByText("$100.00 USD")).toBeTruthy();

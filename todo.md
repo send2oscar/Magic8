@@ -248,3 +248,9 @@
 - [x] Add a regression covering the reported approved-but-not-captured order state and validate the corrected payment-ledger result, including 128 deterministic tests and a production build; the independent external ComfyUI endpoint test remains unavailable due to a socket hang-up.
 - [x] Save a checkpoint and synchronize the PayPal capture correction to GitHub `PayPalPaymentGateway` through merged Pull Request #6.
 - [x] Record the receiving PayPal Sandbox merchant email confirmation as deferred at the user's request; until it is completed externally, any `PENDING/UNILATERAL` capture remains uncredited, visible to administrators, and safely retryable.
+- [x] Update the PayPal Sandbox application client ID and client secret through managed project secrets.
+- [x] Validate the new PayPal credentials with the existing credential test without creating an order or capture.
+- [ ] Save a recovery checkpoint containing the verified PayPal credential configuration update.
+- [x] Add a fixed USD 0.10 package that grants exactly 1 credit, with server-side package and amount validation.
+- [x] Verify the 1-credit package renders in the purchase UI and cannot grant credits before a completed PayPal capture.
+- [x] Audit the end-to-end ComfyUI prompt flow: the Dashboard positive prompt is forwarded unchanged to the approved Qwen node, while the server-owned workflow adds a fixed negative prompt and never removes user-entered text.

@@ -1,4 +1,6 @@
 export const CREDITS_PER_PRICE_UNIT = 10;
+export const SINGLE_CREDIT_PACKAGE_CREDITS = 1;
+export const SINGLE_CREDIT_PACKAGE_PRICE_CENTS = 10;
 
 export const INITIAL_CREDIT_POLICY = {
   standardTryOnCredits: 1,
@@ -32,13 +34,15 @@ export function assertValidPackageCredits(credits: number) {
   if (!isPositiveSafeInteger(credits)) {
     throw new Error("A credit package must contain a positive whole number of credits.");
   }
+  if (credits === SINGLE_CREDIT_PACKAGE_CREDITS) return;
   if (credits % CREDITS_PER_PRICE_UNIT !== 0) {
-    throw new Error(`A credit package must be divisible by ${CREDITS_PER_PRICE_UNIT} so its USD price is exact.`);
+    throw new Error(`A credit package must be either 1 credit or divisible by ${CREDITS_PER_PRICE_UNIT} so its USD price is exact.`);
   }
 }
 
 export function calculatePackagePriceCents(credits: number, priceCentsPerTenCredits: number) {
   assertValidPackageCredits(credits);
+  if (credits === SINGLE_CREDIT_PACKAGE_CREDITS) return SINGLE_CREDIT_PACKAGE_PRICE_CENTS;
   if (!isPositiveSafeInteger(priceCentsPerTenCredits)) {
     throw new Error("The USD price per 10 credits must be a positive whole number of cents.");
   }

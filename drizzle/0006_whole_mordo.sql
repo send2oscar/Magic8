@@ -1,0 +1,1 @@
+ALTER TABLE `paypal_payments` MODIFY COLUMN `status` enum('created','pending','completed','failed','cancelled') NOT NULL DEFAULT 'created';

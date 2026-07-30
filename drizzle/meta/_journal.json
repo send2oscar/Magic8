@@ -43,6 +43,13 @@
       "when": 1785333938775,
       "tag": "0005_small_greymalkin",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1785392298444,
+      "tag": "0006_whole_mordo",
+      "breakpoints": true
     }
   ]
 }

@@ -77,7 +77,10 @@ export const creditPolicies = mysqlTable("credit_policies", {
 export type CreditPolicy = typeof creditPolicies.$inferSelect;
 export type InsertCreditPolicy = typeof creditPolicies.$inferInsert;
 
-/** Editable fixed quantities; their USD price is always calculated from the active policy. */
+/**
+ * Editable fixed quantities. Standard packages use the active policy; the
+ * allowed 1-credit package is deliberately fixed at USD 0.10 in creditPolicy.
+ */
 export const creditPackages = mysqlTable("credit_packages", {
   id: int("id").autoincrement().primaryKey(),
   credits: int("credits").notNull(),
