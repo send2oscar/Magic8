@@ -246,4 +246,5 @@
 - [x] Trace the reported PayPal Sandbox return-page failure through the stored payment record, returned order ID, capture response, and full administrator-visible error log.
 - [x] Correct the return-page capture logic so an approved Sandbox order is captured and verified once before credits are granted; non-terminal `PENDING/UNILATERAL` captures remain uncredited and retryable.
 - [x] Add a regression covering the reported approved-but-not-captured order state and validate the corrected payment-ledger result, including 128 deterministic tests and a production build; the independent external ComfyUI endpoint test remains unavailable due to a socket hang-up.
-- [ ] Save a checkpoint and synchronize the PayPal capture correction to GitHub `PayPalPaymentGateway`.
+- [x] Save a checkpoint and synchronize the PayPal capture correction to GitHub `PayPalPaymentGateway` through merged Pull Request #6.
+- [x] Record the receiving PayPal Sandbox merchant email confirmation as deferred at the user's request; until it is completed externally, any `PENDING/UNILATERAL` capture remains uncredited, visible to administrators, and safely retryable.
