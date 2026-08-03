@@ -262,3 +262,6 @@
 - [x] Add regression coverage for the checkout-start response and verify the Buy Package flow does not issue credits before a completed capture.
 - [x] Save a checkpoint containing the verified Buy Package error correction.
 - [x] Replace the remaining Sandbox-only PayPal checkout integration with the confirmed Live API path and preserve typed client-visible checkout errors.
+- [x] Separate site-wide Credit Policy and Fixed Credit Packages from individual user management in a dedicated General Settings area.
+- [x] Clearly state that credit policy and package changes apply globally to all users while retaining the existing server-enforced data flow.
+- [ ] Add regression coverage, visually verify the reorganized administration UI, and save a checkpoint.

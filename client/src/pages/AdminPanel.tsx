@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { AdminCreditPaymentControls } from "@/components/AdminCreditPaymentControls";
 import { trpc } from "@/lib/trpc";
-import { CircleAlert, FileWarning, GalleryHorizontalEnd, LoaderCircle, LogOut, ShieldCheck, UserRound, Users } from "lucide-react";
+import { CircleAlert, FileWarning, GalleryHorizontalEnd, LoaderCircle, LogOut, Settings2, ShieldCheck, UserRound, Users } from "lucide-react";
 import React, { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 
@@ -28,6 +28,8 @@ function processingRouteLabel(route: string | null) {
   return route;
 }
 
+type AdminWorkspaceView = "settings" | "users";
+
 function AdminImage({ src, alt }: { src: string | null; alt: string }) {
   const [failed, setFailed] = useState(false);
   if (!src || failed) {
@@ -43,21 +45,22 @@ export default function AdminPanel() {
   const authorized = session.data?.authenticated === true;
   const users = trpc.admin.listUsers.useQuery(undefined, { enabled: authorized, retry: false });
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
+  const [view, setView] = useState<AdminWorkspaceView>("settings");
   const profile = trpc.admin.userProfile.useQuery(
     { userId: selectedUserId ?? 0 },
-    { enabled: authorized && selectedUserId !== null, retry: false },
+    { enabled: authorized && view === "users" && selectedUserId !== null, retry: false },
   );
   const gallery = trpc.admin.userGallery.useQuery(
     { userId: selectedUserId ?? 0 },
-    { enabled: authorized && selectedUserId !== null, retry: false },
+    { enabled: authorized && view === "users" && selectedUserId !== null, retry: false },
   );
   const taskErrors = trpc.admin.userTaskErrors.useQuery(
     { userId: selectedUserId ?? 0 },
-    { enabled: authorized && selectedUserId !== null, retry: false },
+    { enabled: authorized && view === "users" && selectedUserId !== null, retry: false },
   );
   const taskDiagnostics = trpc.admin.userTaskDiagnostics.useQuery(
     { userId: selectedUserId ?? 0 },
-    { enabled: authorized && selectedUserId !== null, retry: false },
+    { enabled: authorized && view === "users" && selectedUserId !== null, retry: false },
   );
   const logout = trpc.admin.logout.useMutation({
     onSuccess: async () => {
@@ -86,7 +89,7 @@ export default function AdminPanel() {
             <ShieldCheck className="h-7 w-7 text-accent" />
             <div>
               <p className="text-2xl font-bold neon-pink">ADMIN WORKSPACE</p>
-              <p className="text-xs text-muted-foreground">Restricted user, route, gallery, and image-generation error-log review</p>
+              <p className="text-xs text-muted-foreground">Site-wide credit settings, user review, payment records, and image-generation diagnostics</p>
             </div>
           </div>
           <Button onClick={() => logout.mutate()} disabled={logout.isPending} className="bg-destructive font-bold text-destructive-foreground">
@@ -96,32 +99,86 @@ export default function AdminPanel() {
       </header>
 
       <main className="container grid gap-6 py-8 lg:grid-cols-[340px_minmax(0,1fr)]">
-        <Card className="hud-frame h-fit bg-card/50 p-4">
-          <div className="mb-4 flex items-center gap-2"><Users className="h-5 w-5 text-accent" /><h1 className="font-bold">USERS</h1></div>
-          {users.isLoading ? (
-            <div className="flex justify-center p-8"><LoaderCircle className="h-6 w-6 animate-spin text-accent" /></div>
-          ) : users.isError ? (
-            <p className="text-sm text-destructive">Unable to load users.</p>
-          ) : users.data?.length ? (
-            <div className="max-h-[65vh] space-y-2 overflow-y-auto pr-1">
-              {users.data.map(user => (
-                <button
-                  key={user.id}
-                  onClick={() => setSelectedUserId(user.id)}
-                  className={`w-full rounded border p-3 text-left ${selectedUserId === user.id ? "border-secondary bg-secondary/15" : "border-border hover:border-accent/60"}`}
-                >
-                  <p className="truncate font-semibold">{user.name || "Unnamed user"}</p>
-                  <p className="truncate text-xs text-muted-foreground">{user.email || "No email recorded"}</p>
-                  <p className="mt-2 text-xs text-muted-foreground">Last sign-in: {when(user.lastSignedIn)}</p>
-                </button>
-              ))}
+        <aside className="space-y-6">
+          <Card className="hud-frame bg-card/50 p-3">
+            <div className="space-y-2" aria-label="Administration sections">
+              <button
+                type="button"
+                onClick={() => setView("settings")}
+                aria-pressed={view === "settings"}
+                className={`w-full rounded border p-4 text-left transition-colors ${view === "settings" ? "border-secondary bg-secondary/15" : "border-border hover:border-secondary/60"}`}
+              >
+                <div className="flex items-start gap-3">
+                  <Settings2 className="mt-0.5 h-5 w-5 shrink-0 text-secondary" />
+                  <div className="min-w-0">
+                    <p className="font-bold">GENERAL SETTINGS</p>
+                    <p className="mt-1 text-xs text-muted-foreground">Shared credit policy, packages, and PayPal payment records.</p>
+                    <span className="mt-3 inline-flex rounded border border-secondary/50 bg-secondary/10 px-2 py-1 text-[10px] font-bold tracking-wide text-secondary">APPLIES TO ALL USERS</span>
+                  </div>
+                </div>
+              </button>
+              <button
+                type="button"
+                onClick={() => setView("users")}
+                aria-pressed={view === "users"}
+                className={`w-full rounded border p-4 text-left transition-colors ${view === "users" ? "border-accent bg-accent/10" : "border-border hover:border-accent/60"}`}
+              >
+                <div className="flex items-start gap-3">
+                  <Users className="mt-0.5 h-5 w-5 shrink-0 text-accent" />
+                  <div>
+                    <p className="font-bold">USER MANAGEMENT</p>
+                    <p className="mt-1 text-xs text-muted-foreground">Review an individual user&apos;s profile, credits, gallery, route diagnostics, and errors.</p>
+                  </div>
+                </div>
+              </button>
             </div>
-          ) : <p className="text-sm text-muted-foreground">No users have signed in yet.</p>}
-        </Card>
+          </Card>
+
+          <Card className="hud-frame h-fit bg-card/50 p-4">
+            <div className="mb-4 flex items-center gap-2"><Users className="h-5 w-5 text-accent" /><h1 className="font-bold">USERS</h1></div>
+            {users.isLoading ? (
+              <div className="flex justify-center p-8"><LoaderCircle className="h-6 w-6 animate-spin text-accent" /></div>
+            ) : users.isError ? (
+              <p className="text-sm text-destructive">Unable to load users.</p>
+            ) : users.data?.length ? (
+              <div className="max-h-[65vh] space-y-2 overflow-y-auto pr-1">
+                {users.data.map(user => (
+                  <button
+                    key={user.id}
+                    onClick={() => {
+                      setSelectedUserId(user.id);
+                      setView("users");
+                    }}
+                    className={`w-full rounded border p-3 text-left ${selectedUserId === user.id && view === "users" ? "border-secondary bg-secondary/15" : "border-border hover:border-accent/60"}`}
+                  >
+                    <p className="truncate font-semibold">{user.name || "Unnamed user"}</p>
+                    <p className="truncate text-xs text-muted-foreground">{user.email || "No email recorded"}</p>
+                    <p className="mt-2 text-xs text-muted-foreground">Last sign-in: {when(user.lastSignedIn)}</p>
+                  </button>
+                ))}
+              </div>
+            ) : <p className="text-sm text-muted-foreground">No users have signed in yet.</p>}
+          </Card>
+        </aside>
 
         <section className="min-w-0 space-y-6">
-          <AdminCreditPaymentControls />
-          {selectedUserId === null ? (
+          {view === "settings" ? (
+            <>
+              <Card className="hud-frame border-secondary/40 bg-secondary/5 p-6">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div className="flex items-start gap-3">
+                    <Settings2 className="mt-1 h-6 w-6 text-secondary" />
+                    <div>
+                      <h1 className="text-2xl font-bold text-secondary">GENERAL SETTINGS</h1>
+                      <p className="mt-2 max-w-2xl text-sm text-muted-foreground">Credit Policy and Fixed Credit Packages are site-wide rules. Saving changes here applies the same policy and checkout choices to every current and future user.</p>
+                    </div>
+                  </div>
+                  <span className="rounded border border-secondary/50 bg-secondary/10 px-3 py-1.5 text-xs font-bold tracking-wide text-secondary">GLOBAL SCOPE · ALL USERS</span>
+                </div>
+              </Card>
+              <AdminCreditPaymentControls />
+            </>
+          ) : selectedUserId === null ? (
             <Card className="hud-frame bg-card/50 p-8 text-center text-muted-foreground">Select a user to review their profile, processing routes, gallery, and complete image-generation task errors.</Card>
           ) : (
             <>

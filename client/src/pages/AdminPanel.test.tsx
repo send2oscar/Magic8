@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import AdminPanel from "./AdminPanel";
 
 const fullTryOnError = `Try-on backend traceback:\n${"diagnostic detail ".repeat(60)}END-OF-TRY-ON-ERROR`;
@@ -82,8 +82,23 @@ describe("Admin Workspace diagnostics", () => {
     mocks.setLocation.mockReset();
   });
 
+  it("separates site-wide settings from individual-user administration", async () => {
+    render(<AdminPanel />);
+
+    expect(screen.getByText("APPLIES TO ALL USERS")).toBeTruthy();
+    expect(screen.getAllByText("GENERAL SETTINGS").length).toBeGreaterThan(0);
+    expect(screen.getByText("CREDIT POLICY")).toBeTruthy();
+    expect(screen.queryByText("RECENT PROCESSING ROUTES")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /user management/i }));
+    await waitFor(() => expect(screen.getByText("RECENT PROCESSING ROUTES")).toBeTruthy());
+    expect(screen.queryByText("CREDIT POLICY")).toBeNull();
+  });
+
   it("shows full raw error logs for both standard try-on and Qwen image-generation failures", async () => {
     render(<AdminPanel />);
+
+    fireEvent.click(screen.getByRole("button", { name: /user management/i }));
 
     await waitFor(() => expect(screen.getByText("FULL IMAGE-GENERATION ERROR LOGS")).toBeTruthy());
     expect(screen.getByText("RECENT PROCESSING ROUTES")).toBeTruthy();

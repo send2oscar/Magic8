@@ -60,6 +60,9 @@ describe("AdminCreditPaymentControls", () => {
     render(<AdminCreditPaymentControls />);
 
     await waitFor(() => expect((screen.getByLabelText("Non-XXX credit deduction") as HTMLInputElement).value).toBe("1"));
+    expect(screen.getAllByText("ALL USERS").length).toBeGreaterThanOrEqual(3);
+    expect(screen.getByText(/site-wide values are enforced by the server for every user/i)).toBeTruthy();
+    expect(screen.getByText(/Shared checkout choices shown to every user/i)).toBeTruthy();
     expect((screen.getByLabelText("XXX credit deduction") as HTMLInputElement).value).toBe("10");
     expect((screen.getByLabelText("USD price per 10 credits") as HTMLInputElement).value).toBe("1.00");
     expect(screen.getByText("Ada Lovelace")).toBeTruthy();
