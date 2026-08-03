@@ -264,4 +264,4 @@
 - [x] Replace the remaining Sandbox-only PayPal checkout integration with the confirmed Live API path and preserve typed client-visible checkout errors.
 - [x] Separate site-wide Credit Policy and Fixed Credit Packages from individual user management in a dedicated General Settings area.
 - [x] Clearly state that credit policy and package changes apply globally to all users while retaining the existing server-enforced data flow.
-- [ ] Add regression coverage, visually verify the reorganized administration UI, and save a checkpoint.
+- [x] Add regression coverage, visually verify the reorganized administration UI, and save a checkpoint.
