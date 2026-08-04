@@ -272,3 +272,4 @@
 - [x] Add or update regression coverage, visually verify key desktop and mobile views, and save the themed project version.
 - [x] Correct the Login redirect side effect detected during themed-page verification so navigation does not occur during render.
 - [x] Correct the matching Register redirect side effect so navigation does not occur during render.
+- [x] Create and verify a standalone hover-magnifier proof of concept for the image-preview modal without modifying the application UI, source, settings, or data.
