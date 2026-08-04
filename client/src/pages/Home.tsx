@@ -11,7 +11,7 @@ export default function Home() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
+      <div className="neon-luxe-page min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
           <div className="inline-block animate-spin mb-4">
             <Zap className="w-8 h-8 text-accent" />
@@ -24,11 +24,11 @@ export default function Home() {
 
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen bg-background overflow-hidden">
+      <div className="neon-luxe-page min-h-screen bg-background overflow-hidden">
         {/* Animated background grid */}
         <div className="absolute inset-0 opacity-10">
           <div className="absolute inset-0" style={{
-            backgroundImage: 'linear-gradient(0deg, transparent 24%, rgba(255, 0, 110, 0.05) 25%, rgba(255, 0, 110, 0.05) 26%, transparent 27%, transparent 74%, rgba(255, 0, 110, 0.05) 75%, rgba(255, 0, 110, 0.05) 76%, transparent 77%, transparent), linear-gradient(90deg, transparent 24%, rgba(0, 217, 255, 0.05) 25%, rgba(0, 217, 255, 0.05) 26%, transparent 27%, transparent 74%, rgba(0, 217, 255, 0.05) 75%, rgba(0, 217, 255, 0.05) 76%, transparent 77%, transparent)',
+            backgroundImage: 'linear-gradient(0deg, transparent 24%, rgba(255, 63, 168, 0.07) 25%, rgba(255, 63, 168, 0.07) 26%, transparent 27%, transparent 74%, rgba(255, 63, 168, 0.07) 75%, rgba(255, 63, 168, 0.07) 76%, transparent 77%, transparent), linear-gradient(90deg, transparent 24%, rgba(190, 93, 255, 0.05) 25%, rgba(190, 93, 255, 0.05) 26%, transparent 27%, transparent 74%, rgba(190, 93, 255, 0.05) 75%, rgba(190, 93, 255, 0.05) 76%, transparent 77%, transparent)',
             backgroundSize: '50px 50px'
           }} />
         </div>
@@ -37,6 +37,7 @@ export default function Home() {
           <div className="max-w-2xl w-full space-y-8">
             {/* Title */}
             <div className="text-center space-y-4">
+              <p className="neon-luxe-eyebrow">AI wardrobe studio · private by design</p>
               <h1 className="text-5xl md:text-6xl font-bold neon-pink mb-2">
                 SHIRT CHANGER
               </h1>
@@ -71,16 +72,16 @@ export default function Home() {
             </div>
 
             {/* CTA Buttons */}
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <div className="flex flex-col sm:flex-row gap-4 justify-center pt-2">
               <Button
                 onClick={() => startLogin()}
-                className="px-8 py-3 bg-accent text-accent-foreground font-bold text-lg hover:shadow-lg hover:shadow-accent/50 border-2 border-accent"
+                className="px-8 py-3 bg-accent text-accent-foreground font-bold text-lg border border-accent shadow-[0_0_28px_oklch(0.73_0.27_342_/_0.28)] hover:shadow-[0_0_36px_oklch(0.73_0.27_342_/_0.42)]"
               >
                 LOGIN
               </Button>
               <Button
                 onClick={() => setLocation("/register")}
-                className="px-8 py-3 bg-transparent text-secondary font-bold text-lg border-2 border-secondary hover:shadow-lg hover:shadow-secondary/50"
+                className="px-8 py-3 bg-background/30 text-secondary font-bold text-lg border border-secondary/70 hover:bg-secondary/10 hover:shadow-[0_0_28px_oklch(0.77_0.09_337_/_0.2)]"
               >
                 REGISTER
               </Button>
@@ -98,9 +99,9 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="neon-luxe-page min-h-screen bg-background">
       {/* Header */}
-      <div className="border-b-2 border-accent bg-card/50 backdrop-blur">
+      <div className="border-b border-accent/35 bg-background/75 backdrop-blur-xl">
         <div className="container py-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Zap className="w-6 h-6 text-accent" />
@@ -113,7 +114,7 @@ export default function Home() {
             </div>
             <Button
               onClick={() => setLocation("/dashboard")}
-              className="px-4 py-2 bg-accent text-accent-foreground font-bold border-2 border-accent"
+              className="px-4 py-2 bg-accent text-accent-foreground font-bold border border-accent shadow-[0_0_22px_oklch(0.73_0.27_342_/_0.24)]"
             >
               DASHBOARD
             </Button>
@@ -124,7 +125,7 @@ export default function Home() {
       {/* Main content */}
       <div className="container py-12">
         <div className="max-w-4xl mx-auto">
-          <Card className="hud-frame bg-card/50 backdrop-blur">
+          <Card className="hud-frame bg-card/50 backdrop-blur-xl">
             <div className="text-center space-y-6">
               <h2 className="text-3xl font-bold neon-cyan">WELCOME, {user?.name?.toUpperCase()}</h2>
               <p className="text-foreground">Navigate to your dashboard to start the virtual try-on experience</p>

@@ -265,3 +265,10 @@
 - [x] Separate site-wide Credit Policy and Fixed Credit Packages from individual user management in a dedicated General Settings area.
 - [x] Clearly state that credit policy and package changes apply globally to all users while retaining the existing server-enforced data flow.
 - [x] Add regression coverage, visually verify the reorganized administration UI, and save a checkpoint.
+- [x] Prepare pink UI style samples and recommendations only; do not modify application code, user interface, settings, or data.
+- [x] Define shared Neon Luxe pink visual tokens and reusable surface, border, navigation, and control treatments.
+- [x] Apply the Neon Luxe direction to public pages and the signed-in dashboard without changing workflows.
+- [x] Apply the Neon Luxe direction to the administration interface while preserving the General Settings and User Management distinction.
+- [ ] Add or update regression coverage, visually verify key desktop and mobile views, and save the themed project version.
+- [x] Correct the Login redirect side effect detected during themed-page verification so navigation does not occur during render.
+- [x] Correct the matching Register redirect side effect so navigation does not occur during render.

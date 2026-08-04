@@ -130,8 +130,8 @@ export default function Gallery() {
   if (!isAuthenticated) return null;
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="sticky top-0 z-40 border-b-2 border-accent/30 bg-background/85 backdrop-blur">
+    <div className="neon-luxe-page min-h-screen bg-background">
+      <header className="sticky top-0 z-40 border-b border-accent/30 bg-background/85 backdrop-blur-xl">
         <div className="container flex items-center justify-between gap-4 py-4">
           <div className="flex min-w-0 items-center gap-3">
             <Images className="h-7 w-7 shrink-0 text-accent" />
@@ -140,7 +140,7 @@ export default function Gallery() {
               <p className="text-xs text-muted-foreground">Private AI processing history</p>
             </div>
           </div>
-          <Button onClick={() => setLocation("/dashboard")} className="bg-secondary font-bold text-background">
+          <Button onClick={() => setLocation("/dashboard")} className="border border-secondary/70 bg-secondary font-bold text-secondary-foreground shadow-[0_0_22px_oklch(0.77_0.09_337_/_0.18)]">
             <ArrowLeft className="mr-2 h-4 w-4" /> TRY-ON
           </Button>
         </div>
@@ -163,7 +163,7 @@ export default function Gallery() {
         ) : gallery.data?.length ? (
           <div className="grid gap-6 xl:grid-cols-2">
             {gallery.data.map((entry) => (
-              <Card key={entry.id} className="hud-frame overflow-hidden bg-card/50 p-0">
+            <Card key={entry.id} className="hud-frame overflow-hidden bg-card/50 p-0 backdrop-blur-xl">
                 <div className="flex flex-wrap items-center justify-between gap-3 border-b border-accent/20 px-5 py-4">
                   <div className="flex items-center gap-3">
                     <Shirt className="h-5 w-5 text-accent" />
@@ -231,7 +231,7 @@ export default function Gallery() {
           setDeleteError(null);
         }
       }}>
-        <AlertDialogContent>
+        <AlertDialogContent className="neon-luxe-shell">
           <AlertDialogHeader>
             <AlertDialogTitle>Delete this Gallery item?</AlertDialogTitle>
             <AlertDialogDescription>
@@ -249,7 +249,7 @@ export default function Gallery() {
       </AlertDialog>
 
       <Dialog open={preview !== null} onOpenChange={(open) => { if (!open) setPreview(null); }}>
-        <DialogContent className="max-w-5xl border-accent/40 bg-card p-4 sm:max-w-5xl">
+        <DialogContent className="neon-luxe-shell max-w-5xl border-accent/60 bg-card p-4 sm:max-w-5xl">
           <DialogHeader>
             <DialogTitle>{preview?.title ?? "Image"} preview</DialogTitle>
             <DialogDescription>Full-size Gallery preview. Use the download button to save a copy.</DialogDescription>

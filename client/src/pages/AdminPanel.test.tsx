@@ -72,7 +72,7 @@ vi.mock("@/lib/trpc", () => ({
 
 vi.mock("wouter", () => ({ useLocation: () => ["/admin", mocks.setLocation] }));
 vi.mock("@/components/ui/button", () => ({ Button: ({ children, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement>) => <button {...props}>{children}</button> }));
-vi.mock("@/components/ui/card", () => ({ Card: ({ children }: { children: React.ReactNode }) => <section>{children}</section> }));
+vi.mock("@/components/ui/card", () => ({ Card: ({ children, className }: { children: React.ReactNode; className?: string }) => <section className={className}>{children}</section> }));
 vi.mock("lucide-react", () => ({ CircleAlert: () => null, CircleDollarSign: () => null, FileWarning: () => null, GalleryHorizontalEnd: () => null, LoaderCircle: () => null, LogOut: () => null, Plus: () => null, ReceiptText: () => null, Settings2: () => null, ShieldCheck: () => null, UserRound: () => null, Users: () => null }));
 
 describe("Admin Workspace diagnostics", () => {
@@ -85,6 +85,8 @@ describe("Admin Workspace diagnostics", () => {
   it("separates site-wide settings from individual-user administration", async () => {
     render(<AdminPanel />);
 
+    expect(document.querySelector(".neon-luxe-page")).toBeTruthy();
+    expect(screen.getByText("Global controls")).toBeTruthy();
     expect(screen.getByText("APPLIES TO ALL USERS")).toBeTruthy();
     expect(screen.getAllByText("GENERAL SETTINGS").length).toBeGreaterThan(0);
     expect(screen.getByText("CREDIT POLICY")).toBeTruthy();

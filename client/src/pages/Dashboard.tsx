@@ -427,9 +427,9 @@ export default function Dashboard() {
       : "NO ROUTE SELECTED";
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="neon-luxe-page min-h-screen bg-background">
       {/* Header */}
-      <div className="border-b-2 border-accent/30 bg-background/50 backdrop-blur sticky top-0 z-40">
+      <div className="sticky top-0 z-40 border-b border-accent/30 bg-background/80 backdrop-blur-xl">
         <div className="container py-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Zap className="w-6 h-6 text-accent" />
@@ -442,14 +442,14 @@ export default function Dashboard() {
             </div>
             <Button
               onClick={() => setLocation("/gallery")}
-              className="px-4 py-2 bg-secondary text-background font-bold border-2 border-secondary flex items-center gap-2"
+              className="flex items-center gap-2 border border-secondary/70 bg-secondary px-4 py-2 font-bold text-secondary-foreground shadow-[0_0_22px_oklch(0.77_0.09_337_/_0.18)]"
             >
               <Shirt className="w-4 h-4" />
               GALLERY
             </Button>
             <Button
               onClick={handleLogout}
-              className="px-4 py-2 bg-destructive text-destructive-foreground font-bold border-2 border-destructive flex items-center gap-2"
+              className="flex items-center gap-2 border border-destructive/80 bg-destructive px-4 py-2 font-bold text-destructive-foreground"
             >
               <LogOut className="w-4 h-4" />
               LOGOUT
@@ -465,7 +465,7 @@ export default function Dashboard() {
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           {/* Left: Photo Upload */}
-          <Card className="hud-frame bg-card/50 backdrop-blur">
+          <Card className="hud-frame bg-card/50 backdrop-blur-xl">
             <div className="space-y-6">
               <h2 className="text-2xl font-bold neon-pink">UPLOAD PHOTO</h2>
 
@@ -518,7 +518,7 @@ export default function Dashboard() {
           {/* Right: Shirt Selection & Try-On */}
           <div className="space-y-6">
             {/* Shirt Selection */}
-            <Card className="hud-frame bg-card/50 backdrop-blur">
+            <Card className="hud-frame bg-card/50 backdrop-blur-xl">
               <div className="space-y-4">
                 <h2 className="text-2xl font-bold neon-cyan">SELECT SHIRT</h2>
 
@@ -613,7 +613,7 @@ export default function Dashboard() {
             </Card>
 
             {/* Try-On Button */}
-            <Card className="hud-frame bg-card/50 backdrop-blur">
+            <Card className="hud-frame bg-card/50 backdrop-blur-xl">
               <div className="space-y-4">
                 <h2 className="text-2xl font-bold neon-pink">TRY ON</h2>
                 <div className="rounded border border-accent/40 bg-background/40 px-4 py-3" role="status" aria-label="Selected processing route">
@@ -705,7 +705,7 @@ export default function Dashboard() {
       </div>
 
       <AlertDialog open={showResetConfirm} onOpenChange={setShowResetConfirm}>
-        <AlertDialogContent className="border-accent bg-card">
+        <AlertDialogContent className="neon-luxe-shell border-accent/60 bg-card">
           <AlertDialogHeader>
             <AlertDialogTitle className="text-xl font-bold neon-cyan">USE ANOTHER PHOTO</AlertDialogTitle>
             <AlertDialogDescription className="text-foreground">
@@ -720,7 +720,7 @@ export default function Dashboard() {
 
       {/* Result Dialog */}
       <Dialog open={showResult} onOpenChange={setShowResult}>
-        <DialogContent className="max-w-3xl p-0 border bg-card">
+        <DialogContent className="neon-luxe-shell max-w-3xl border border-accent/60 bg-card p-0">
           <DialogHeader className="p-6 pb-0">
             <DialogTitle className="text-2xl font-bold neon-cyan">TRY-ON RESULT</DialogTitle>
           </DialogHeader>

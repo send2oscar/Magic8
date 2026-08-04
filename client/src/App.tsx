@@ -62,7 +62,7 @@ function App() {
           <Router />
         </TooltipProvider>
         {versionInfo && (
-          <footer className="text-center text-xs text-gray-500 py-4">
+          <footer className="border-t border-accent/15 bg-background/80 py-4 text-center text-xs text-muted-foreground backdrop-blur">
             Version: {versionInfo.version} ({versionInfo.checkpointId.substring(0, 7)})
           </footer>
         )}

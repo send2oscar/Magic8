@@ -78,12 +78,12 @@ export default function AdminPanel() {
   }, [selectedUserId, users.data]);
 
   if (session.isLoading || !authorized) {
-    return <div className="flex min-h-screen items-center justify-center bg-background"><LoaderCircle className="h-8 w-8 animate-spin text-accent" /></div>;
+    return <div className="neon-luxe-page flex min-h-screen items-center justify-center bg-background"><LoaderCircle className="h-8 w-8 animate-spin text-accent" /></div>;
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="sticky top-0 z-40 border-b-2 border-accent/30 bg-background/85 backdrop-blur">
+    <div className="neon-luxe-page min-h-screen bg-background">
+      <header className="sticky top-0 z-40 border-b border-accent/30 bg-background/85 backdrop-blur-xl">
         <div className="container flex items-center justify-between gap-4 py-4">
           <div className="flex items-center gap-3">
             <ShieldCheck className="h-7 w-7 text-accent" />
@@ -92,7 +92,7 @@ export default function AdminPanel() {
               <p className="text-xs text-muted-foreground">Site-wide credit settings, user review, payment records, and image-generation diagnostics</p>
             </div>
           </div>
-          <Button onClick={() => logout.mutate()} disabled={logout.isPending} className="bg-destructive font-bold text-destructive-foreground">
+          <Button onClick={() => logout.mutate()} disabled={logout.isPending} className="border border-destructive/80 bg-destructive font-bold text-destructive-foreground">
             <LogOut className="mr-2 h-4 w-4" /> LOGOUT
           </Button>
         </div>
@@ -100,20 +100,20 @@ export default function AdminPanel() {
 
       <main className="container grid gap-6 py-8 lg:grid-cols-[340px_minmax(0,1fr)]">
         <aside className="space-y-6">
-          <Card className="hud-frame bg-card/50 p-3">
+          <Card className="hud-frame bg-card/50 p-3 backdrop-blur-xl">
             <div className="space-y-2" aria-label="Administration sections">
               <button
                 type="button"
                 onClick={() => setView("settings")}
                 aria-pressed={view === "settings"}
-                className={`w-full rounded border p-4 text-left transition-colors ${view === "settings" ? "border-secondary bg-secondary/15" : "border-border hover:border-secondary/60"}`}
+                className={`w-full rounded-lg border p-4 text-left transition-all duration-200 ${view === "settings" ? "border-accent bg-accent/10 shadow-[0_0_24px_oklch(0.73_0.27_342_/_0.16)]" : "border-border bg-background/20 hover:border-accent/60 hover:bg-accent/5"}`}
               >
                 <div className="flex items-start gap-3">
-                  <Settings2 className="mt-0.5 h-5 w-5 shrink-0 text-secondary" />
+                  <Settings2 className="mt-0.5 h-5 w-5 shrink-0 text-accent" />
                   <div className="min-w-0">
                     <p className="font-bold">GENERAL SETTINGS</p>
                     <p className="mt-1 text-xs text-muted-foreground">Shared credit policy, packages, and PayPal payment records.</p>
-                    <span className="mt-3 inline-flex rounded border border-secondary/50 bg-secondary/10 px-2 py-1 text-[10px] font-bold tracking-wide text-secondary">APPLIES TO ALL USERS</span>
+                    <span className="mt-3 inline-flex rounded border border-accent/50 bg-accent/10 px-2 py-1 text-[10px] font-bold tracking-wide text-accent">APPLIES TO ALL USERS</span>
                   </div>
                 </div>
               </button>
@@ -121,7 +121,7 @@ export default function AdminPanel() {
                 type="button"
                 onClick={() => setView("users")}
                 aria-pressed={view === "users"}
-                className={`w-full rounded border p-4 text-left transition-colors ${view === "users" ? "border-accent bg-accent/10" : "border-border hover:border-accent/60"}`}
+                className={`w-full rounded-lg border p-4 text-left transition-all duration-200 ${view === "users" ? "border-accent bg-accent/10 shadow-[0_0_24px_oklch(0.73_0.27_342_/_0.16)]" : "border-border bg-background/20 hover:border-accent/60 hover:bg-accent/5"}`}
               >
                 <div className="flex items-start gap-3">
                   <Users className="mt-0.5 h-5 w-5 shrink-0 text-accent" />
@@ -134,7 +134,7 @@ export default function AdminPanel() {
             </div>
           </Card>
 
-          <Card className="hud-frame h-fit bg-card/50 p-4">
+          <Card className="hud-frame h-fit bg-card/50 p-4 backdrop-blur-xl">
             <div className="mb-4 flex items-center gap-2"><Users className="h-5 w-5 text-accent" /><h1 className="font-bold">USERS</h1></div>
             {users.isLoading ? (
               <div className="flex justify-center p-8"><LoaderCircle className="h-6 w-6 animate-spin text-accent" /></div>
@@ -149,7 +149,7 @@ export default function AdminPanel() {
                       setSelectedUserId(user.id);
                       setView("users");
                     }}
-                    className={`w-full rounded border p-3 text-left ${selectedUserId === user.id && view === "users" ? "border-secondary bg-secondary/15" : "border-border hover:border-accent/60"}`}
+                    className={`w-full rounded-lg border p-3 text-left transition-colors ${selectedUserId === user.id && view === "users" ? "border-accent bg-accent/10" : "border-border bg-background/20 hover:border-accent/60 hover:bg-accent/5"}`}
                   >
                     <p className="truncate font-semibold">{user.name || "Unnamed user"}</p>
                     <p className="truncate text-xs text-muted-foreground">{user.email || "No email recorded"}</p>
@@ -164,16 +164,16 @@ export default function AdminPanel() {
         <section className="min-w-0 space-y-6">
           {view === "settings" ? (
             <>
-              <Card className="hud-frame border-secondary/40 bg-secondary/5 p-6">
+              <Card className="neon-luxe-shell border-accent/45 bg-accent/5 p-6">
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div className="flex items-start gap-3">
-                    <Settings2 className="mt-1 h-6 w-6 text-secondary" />
+                    <Settings2 className="mt-1 h-6 w-6 text-accent" />
                     <div>
-                      <h1 className="text-2xl font-bold text-secondary">GENERAL SETTINGS</h1>
+                      <p className="neon-luxe-eyebrow mb-2">Global controls</p><h1 className="text-2xl font-bold neon-pink">GENERAL SETTINGS</h1>
                       <p className="mt-2 max-w-2xl text-sm text-muted-foreground">Credit Policy and Fixed Credit Packages are site-wide rules. Saving changes here applies the same policy and checkout choices to every current and future user.</p>
                     </div>
                   </div>
-                  <span className="rounded border border-secondary/50 bg-secondary/10 px-3 py-1.5 text-xs font-bold tracking-wide text-secondary">GLOBAL SCOPE · ALL USERS</span>
+                  <span className="rounded border border-accent/50 bg-accent/10 px-3 py-1.5 text-xs font-bold tracking-wide text-accent">GLOBAL SCOPE · ALL USERS</span>
                 </div>
               </Card>
               <AdminCreditPaymentControls />
