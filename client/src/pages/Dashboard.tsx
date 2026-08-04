@@ -2,6 +2,7 @@ import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { CreditPurchasePanel } from "@/components/CreditPurchasePanel";
+import { ImagePreviewMagnifier } from "@/components/ImagePreviewMagnifier";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Textarea } from "@/components/ui/textarea";
@@ -727,7 +728,12 @@ export default function Dashboard() {
           <div className="p-6">
             {resultData?.resultImageUrl ? (
               <div className="space-y-4 p-4">
-                <img src={resultData.resultImageUrl} alt="Try-on result" className="w-full h-auto rounded-lg border border-accent/50" />
+                <ImagePreviewMagnifier
+                  src={resultData.resultImageUrl}
+                  alt="Try-on result"
+                  className="w-full rounded-lg"
+                  imageClassName="h-auto w-full rounded-lg border border-accent/50"
+                />
                 <p className="text-sm text-muted-foreground">Shirt applied: {resultData.shirtApplied}</p>
                 {resultData?.savedToGallery && <p className="text-sm text-secondary">Saved automatically to your private gallery. One credit was deducted after this result was stored.</p>}
               </div>

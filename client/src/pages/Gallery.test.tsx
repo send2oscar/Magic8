@@ -96,6 +96,7 @@ describe("Gallery actions", () => {
     expect(screen.getByRole("dialog")).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Generated image preview" })).toBeTruthy();
     expect(screen.getAllByRole("img", { name: "Your generated try-on result" }).at(-1)?.getAttribute("src")).toBe("/result.jpg");
+    expect(screen.getByText("3× DETAIL")).toBeTruthy();
     expect(screen.getAllByRole("link", { name: "Download Generated image" })).toHaveLength(2);
   });
 });

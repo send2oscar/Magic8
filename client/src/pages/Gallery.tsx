@@ -19,6 +19,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Card } from "@/components/ui/card";
+import { ImagePreviewMagnifier } from "@/components/ImagePreviewMagnifier";
 import { trpc } from "@/lib/trpc";
 import { ArrowLeft, CircleAlert, Download, Images, LoaderCircle, Maximize2, Shirt, Trash2 } from "lucide-react";
 import React, { useEffect, useState } from "react";
@@ -256,7 +257,11 @@ export default function Gallery() {
           </DialogHeader>
           {preview ? (
             <div className="flex max-h-[70vh] min-h-48 items-center justify-center overflow-hidden rounded border border-accent/20 bg-black/30">
-              <img src={preview.src} alt={preview.alt} className="max-h-[70vh] w-auto max-w-full object-contain" />
+              <ImagePreviewMagnifier
+                src={preview.src}
+                alt={preview.alt}
+                imageClassName="max-h-[70vh] w-auto max-w-full object-contain"
+              />
             </div>
           ) : null}
           <DialogFooter>
