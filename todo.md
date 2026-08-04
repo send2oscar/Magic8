@@ -269,6 +269,6 @@
 - [x] Define shared Neon Luxe pink visual tokens and reusable surface, border, navigation, and control treatments.
 - [x] Apply the Neon Luxe direction to public pages and the signed-in dashboard without changing workflows.
 - [x] Apply the Neon Luxe direction to the administration interface while preserving the General Settings and User Management distinction.
-- [ ] Add or update regression coverage, visually verify key desktop and mobile views, and save the themed project version.
+- [x] Add or update regression coverage, visually verify key desktop and mobile views, and save the themed project version.
 - [x] Correct the Login redirect side effect detected during themed-page verification so navigation does not occur during render.
 - [x] Correct the matching Register redirect side effect so navigation does not occur during render.
