@@ -396,8 +396,8 @@ export const appRouter = router({
           createdOrder = await createPaypalOrder({
             amountCents,
             description: `${creditPackage.credits} application credits`,
-            returnUrl: `${origin}/dashboard?paypal=return`,
-            cancelUrl: `${origin}/dashboard?paypal=cancel`,
+            returnUrl: `${origin}/dashboard?paypal=return&paypalTab=1`,
+            cancelUrl: `${origin}/dashboard?paypal=cancel&paypalTab=1`,
             userId: ctx.user.id,
             packageId: creditPackage.id,
           });

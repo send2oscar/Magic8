@@ -314,8 +314,8 @@ describe("Try-On Flow", () => {
         description: "100 application credits",
         userId: 7,
         packageId: 4,
-        returnUrl: "https://app.example.test/dashboard?paypal=return",
-        cancelUrl: "https://app.example.test/dashboard?paypal=cancel",
+        returnUrl: "https://app.example.test/dashboard?paypal=return&paypalTab=1",
+        cancelUrl: "https://app.example.test/dashboard?paypal=cancel&paypalTab=1",
       }));
       expect(mocks.createPaypalPaymentRecord).toHaveBeenCalledWith({
         userId: 7,

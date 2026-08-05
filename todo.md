@@ -275,3 +275,6 @@
 - [x] Create and verify a standalone hover-magnifier proof of concept for the image-preview modal without modifying the application UI, source, settings, or data.
 - [x] Integrate the approved accessible magnifier into every in-app image-preview window while retaining existing preview, download, and close behavior.
 - [x] Add regression coverage and visually verify the shared magnifier on desktop and touch-friendly views before saving the integration checkpoint.
+- [x] Open every PayPal Buy Package checkout in a separate tab while preserving current package validation and server-created order behavior.
+- [x] Notify the originating Dashboard only after the payment-return page receives a server-verified completion result, then refresh credits and purchase state without altering other flows.
+- [x] Add regression coverage and verify successful, cancelled, failed, and blocked-popup checkout behaviors before saving a checkpoint.
